@@ -1,0 +1,1 @@
+{"version":3,"file":"neo4j.client.d.ts","sourceRoot":"","sources":["../../src/graph/neo4j.client.ts"],"names":[],"mappings":"AACA,OAAO,KAAK,EAAE,WAAW,EAAE,WAAW,EAAE,MAAM,cAAc,CAAC;AAE7D,wBAAsB,QAAQ,CAAC,CAAC,SAAS,WAAW,GAAG,WAAW,EAChE,MAAM,EAAE,MAAM,EACd,MAAM,GAAE,MAAM,CAAC,MAAM,EAAE,OAAO,CAAM,GACnC,OAAO,CAAC,WAAW,CAAC,CAAC,CAAC,CAAC,CAQzB"}

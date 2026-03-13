@@ -1,0 +1,119 @@
+// prisma/schema.prisma
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+// ── Users & Auth ──────────────────────────────────────────
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  name      String
+  role      Role     @default(STUDENT)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  submissions Submission[]
+  grades      Grade[]
+}
+
+enum Role {
+  STUDENT
+  LECTURER
+  ADMIN
+}
+
+// ── Academic Structure ────────────────────────────────────
+
+model Course {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+
+  assignments Assignment[]
+}
+
+model Assignment {
+  id        Int      @id @default(autoincrement())
+  title     String
+  courseId   Int
+  course    Course   @relation(fields: [courseId], references: [id])
+  dueDate   DateTime?
+  createdAt DateTime @default(now())
+
+  submissions Submission[]
+}
+
+// ── Submissions ───────────────────────────────────────────
+
+model Submission {
+  id           Int              @id @default(autoincrement())
+  title        String
+  content      String           @db.Text
+  fileName     String?
+  fileUrl      String?
+  status       SubmissionStatus @default(PENDING)
+  chromaDocId  String?          // cross-ref → ChromaDB document
+  neo4jNodeId  String?          // cross-ref → Neo4j Submission node
+
+  userId       Int
+  user         User             @relation(fields: [userId], references: [id])
+  assignmentId Int?
+  assignment   Assignment?      @relation(fields: [assignmentId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  grades             Grade[]
+  plagiarismReports  PlagiarismReport[]
+}
+
+enum SubmissionStatus {
+  PENDING
+  PROCESSING
+  CHECKED
+  FAILED
+}
+
+// ── Grading ───────────────────────────────────────────────
+
+model Grade {
+  id           Int      @id @default(autoincrement())
+  score        Float
+  feedback     String?  @db.Text
+  submissionId Int
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  gradedById   Int?
+  gradedBy     User?    @relation(fields: [gradedById], references: [id])
+  createdAt    DateTime @default(now())
+}
+
+// ── Plagiarism Reports ────────────────────────────────────
+
+model PlagiarismReport {
+  id             Int      @id @default(autoincrement())
+  submissionId   Int
+  submission     Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  overallScore   Float      // 0–100 similarity percentage
+  flagged        Boolean    @default(false)
+  details        Json?      // structured match data from Neo4j/RAG
+  createdAt      DateTime   @default(now())
+}
+
+// ── Audit Log ─────────────────────────────────────────────
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  action    String   // e.g. "submission.create", "plagiarism.check"
+  entityType String? // e.g. "Submission", "Grade"
+  entityId  Int?
+  userId    Int?
+  metadata  Json?
+  createdAt DateTime @default(now())
+}
