@@ -2,7 +2,10 @@ import { z } from "zod";
 export const createSubmissionSchema = z.object({
     title: z.string().min(1, "Title is required"),
     content: z.string().min(1, "Content is required"),
-    studentId: z.number().int().positive(),
+    userId: z.number().int().positive(),
+    assignmentId: z.number().int().positive().optional(),
+    fileName: z.string().optional(),
+    fileUrl: z.string().optional(),
 });
 export const updateSubmissionSchema = z.object({
     title: z.string().min(1).optional(),

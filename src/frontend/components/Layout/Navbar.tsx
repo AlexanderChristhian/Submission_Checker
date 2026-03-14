@@ -1,10 +1,11 @@
 import Link from "next/link";
+import DarkModeButton from "@/components/UI/DarkModeButton";
 
 const navLinks = [
   { href: "/routes/HomePage", label: "Dashboard" },
-  { href: "/submissions", label: "Submissions" },
-  { href: "/reports", label: "Reports" },
-  { href: "/settings", label: "Settings" },
+  { href: "/routes/Submissions", label: "Submissions" },
+  { href: "/routes/Reports", label: "Reports" },
+  { href: "/routes/Settings", label: "Settings" },
 ];
 
 export default function Navbar() {
@@ -34,6 +35,7 @@ export default function Navbar() {
 
         {/* User Actions */}
         <div className="flex items-center gap-3">
+          <DarkModeButton />
           <button className="text-sm px-4 py-1.5 rounded-md bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 hover:opacity-90 transition-opacity">
             Sign Out
           </button>

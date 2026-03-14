@@ -2,14 +2,14 @@ import { prisma } from "../config/database.js";
 export const submissionRepo = {
     async findAll() {
         return prisma.submission.findMany({
-            include: { student: true },
+            include: { user: true },
             orderBy: { id: "desc" },
         });
     },
     async findById(id) {
         return prisma.submission.findUnique({
             where: { id },
-            include: { student: true },
+            include: { user: true },
         });
     },
     async create(data) {
@@ -17,16 +17,19 @@ export const submissionRepo = {
             data: {
                 title: data.title,
                 content: data.content,
-                studentId: data.studentId,
+                userId: data.userId,
+                assignmentId: data.assignmentId ?? null,
+                fileName: data.fileName ?? null,
+                fileUrl: data.fileUrl ?? null,
             },
-            include: { student: true },
+            include: { user: true },
         });
     },
     async update(id, data) {
         return prisma.submission.update({
             where: { id },
             data,
-            include: { student: true },
+            include: { user: true },
         });
     },
     async delete(id) {
