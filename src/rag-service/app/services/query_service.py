@@ -1,16 +1,12 @@
 from dataclasses import dataclass
 
+from app.api.schemas import SourceSnippet
 from app.core.querying import retrieve_chunks
 from app.core.prompts import RAG_QUERY_TEMPLATE
+from app.core.llm import llm_service
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
-
-
-@dataclass
-class SourceSnippet:
-    text: str
-    score: float
 
 
 @dataclass
@@ -39,12 +35,14 @@ class QueryService:
             SourceSnippet(text=c["text"], score=c["score"]) for c in chunks
         ]
 
-        # 3. Format prompt (LLM call is a TODO — return context-based answer for now)
+        # 3. Generate answer using LLM
         prompt = RAG_QUERY_TEMPLATE.format(context=context, query=query)
-
-        # TODO: Call LLM (OpenAI / Ollama) with the prompt
-        # For now, return the retrieved context as the answer
-        answer = f"[RAG Context Retrieved]\n\n{prompt}"
+        
+        try:
+            answer = llm_service.generate(prompt)
+        except Exception as e:
+            logger.warning(f"LLM generation failed, falling back to context: {e}")
+            answer = f"[RAG Context Retrieved]\n\n{context}"
 
         logger.info(
             "Query completed with %d sources",

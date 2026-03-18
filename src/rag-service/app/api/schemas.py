@@ -4,7 +4,7 @@ from pydantic import BaseModel
 # ── Request Models ─────────────────────────────────────────
 
 
-class IndexRequest(BaseModel):
+class IndexTextRequest(BaseModel):
     submission_id: int
     content: str
 
