@@ -10,37 +10,44 @@ from app.api.schemas import (
     SimilarityResponse,
     DeleteRequest,
     HealthResponse,
+    SourceSnippet,
 )
-from app.services.index_service import IndexService
-from app.services.query_service import QueryService
-from app.services.similarity_service import SimilarityService
+from app.services import index_service
+from app.services.document_service import DocumentService
+from app.services.similarity_service import find_similar_submissions
+from app.core.querying import retrieve_chunks
+from app.core.prompts import RAG_QUERY_TEMPLATE
+from app.core.llm import llm_service
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 router = APIRouter()
 
-index_service = IndexService()
-query_service = QueryService()
-similarity_service = SimilarityService()
+document_service = DocumentService()
+
+
+# ═══════════════════════════════════════════════════════════════════
+# INDEXING ROUTES
+# ═══════════════════════════════════════════════════════════════════
 
 @router.post("/index/file", response_model=IndexResponse)
 async def index_document_file(
     submission_id: int = Form(...),
     file: UploadFile = File(...)
 ):
-    """Chunk, embed, and store a physical file document in ChromaDB."""
+    """Load file, chunk, embed, and store in ChromaDB."""
     temp_file_path = ""
     try:
-        # Save file to a temporary location to pass to the DocumentService
         suffix = os.path.splitext(file.filename)[1]
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             content = await file.read()
             tmp.write(content)
             temp_file_path = tmp.name
-        
-        result = index_service.index_file(submission_id, temp_file_path)
-        return IndexResponse(status="indexed", chunks=result.chunk_count)
+
+        documents = document_service.load_document(temp_file_path, submission_id)
+        result = index_service.index_file(documents, submission_id)
+        return IndexResponse(status="indexed", chunks=result["chunk_count"])
     except Exception as e:
         logger.error("File indexing failed", extra={"submission_id": submission_id, "error": str(e)})
         raise HTTPException(status_code=500, detail=f"File indexing failed: {e}")
@@ -53,56 +60,109 @@ async def index_document_file(
 async def index_document(request: IndexTextRequest):
     """Chunk, embed, and store a raw string document in ChromaDB."""
     try:
-        result = index_service.index_text(request.submission_id, request.content)
-        return IndexResponse(status="indexed", chunks=result.chunk_count)
+        result = index_service.index_text(request.content, request.submission_id)
+        return IndexResponse(status="indexed", chunks=result["chunk_count"])
     except Exception as e:
         logger.error("Indexing failed", extra={"submission_id": request.submission_id, "error": str(e)})
         raise HTTPException(status_code=500, detail=f"Indexing failed: {e}")
-
-
-@router.post("/query", response_model=QueryResponse)
-async def query_document(request: QueryRequest):
-    """RAG query against indexed documents."""
-    try:
-        result = query_service.query(request.submission_id, request.query)
-        return QueryResponse(answer=result.answer, sources=result.sources)
-    except Exception as e:
-        logger.error("Query failed", extra={"submission_id": request.submission_id, "error": str(e)})
-        raise HTTPException(status_code=500, detail=f"Query failed: {e}")
-
-@router.post("/query/string", response_model=QueryResponse)
-async def query_document_string(submission_id: int, query: str):
-    """RAG query using String against indexed documents."""
-    try:
-        result = query_service.query(submission_id, query)
-        return QueryResponse(answer=result.answer, sources=result.sources)
-    except Exception as e:
-        logger.error("Query failed", extra={"submission_id": submission_id, "error": str(e)})
-        raise HTTPException(status_code=500, detail=f"Query failed: {e}")
-
-@router.post("/similar", response_model=SimilarityResponse)
-async def find_similar(request: SimilarityRequest):
-    """Find documents most similar to a given submission."""
-    try:
-        matches = similarity_service.find_similar(
-            request.submission_id, request.top_k
-        )
-        return SimilarityResponse(matches=matches)
-    except Exception as e:
-        logger.error("Similarity search failed", extra={"submission_id": request.submission_id, "error": str(e)})
-        raise HTTPException(status_code=500, detail=f"Similarity search failed: {e}")
 
 
 @router.delete("/index")
 async def delete_document(request: DeleteRequest):
     """Remove a document's embeddings from ChromaDB."""
     try:
-        index_service.delete(request.submission_id)
+        index_service.delete_submission(request.submission_id)
         return {"status": "deleted", "submission_id": request.submission_id}
     except Exception as e:
         logger.error("Delete failed", extra={"submission_id": request.submission_id, "error": str(e)})
         raise HTTPException(status_code=500, detail=f"Delete failed: {e}")
 
+
+# ═══════════════════════════════════════════════════════════════════
+# QUERY ROUTES - RAG Style (with LLM synthesis)
+# ═══════════════════════════════════════════════════════════════════
+
+@router.post("/query/rag", response_model=QueryResponse)
+async def query_rag(request: QueryRequest):
+    """Search all indexed documents and generate answer using LLM."""
+    try:
+        chunks = retrieve_chunks(request.query, top_k=request.top_k)
+
+        if not chunks:
+            return QueryResponse(
+                answer="No relevant content found in the knowledge base.",
+                sources=[]
+            )
+
+        context = "\n\n---\n\n".join(c["text"] for c in chunks)
+        sources = [
+            SourceSnippet(
+                text=c["text"],
+                score=c["score"],
+                submission_id=c["metadata"].get("submission_id")
+            ) for c in chunks
+        ]
+
+        prompt = RAG_QUERY_TEMPLATE.format(context=context, query=request.query)
+        try:
+            answer = llm_service.generate(prompt)
+        except Exception as e:
+            logger.warning(f"LLM generation failed, falling back to context: {e}")
+            answer = f"[RAG Context Retrieved]\n\n{context}"
+
+        return QueryResponse(answer=answer, sources=sources)
+    except Exception as e:
+        logger.error("RAG query failed", extra={"error": str(e)})
+        raise HTTPException(status_code=500, detail=f"RAG query failed: {e}")
+
+
+@router.post("/query/search", response_model=QueryResponse)
+async def query_search(request: QueryRequest):
+    """Search all indexed documents and return raw results (no LLM)."""
+    try:
+        chunks = retrieve_chunks(request.query, top_k=request.top_k)
+
+        if not chunks:
+            return QueryResponse(
+                answer="No relevant content found.",
+                sources=[]
+            )
+
+        sources = [
+            SourceSnippet(
+                text=c["text"],
+                score=c["score"],
+                submission_id=c["metadata"].get("submission_id")
+            ) for c in chunks
+        ]
+
+        context = "\n\n---\n\n".join(c["text"] for c in chunks)
+        answer = f"[Search Results - {len(sources)} matches found]\n\n{context}"
+
+        return QueryResponse(answer=answer, sources=sources)
+    except Exception as e:
+        logger.error("Search query failed", extra={"error": str(e)})
+        raise HTTPException(status_code=500, detail=f"Search query failed: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# SIMILARITY ROUTES
+# ═══════════════════════════════════════════════════════════════════
+
+@router.post("/similar", response_model=SimilarityResponse)
+async def find_similar(request: SimilarityRequest):
+    """Find submissions most similar to the given text."""
+    try:
+        matches = find_similar_submissions(request.text, request.top_k)
+        return SimilarityResponse(matches=matches)
+    except Exception as e:
+        logger.error("Similarity search failed", extra={"error": str(e)})
+        raise HTTPException(status_code=500, detail=f"Similarity search failed: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# UTILITY ROUTES
+# ═══════════════════════════════════════════════════════════════════
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
