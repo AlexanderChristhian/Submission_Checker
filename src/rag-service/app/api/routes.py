@@ -1,7 +1,9 @@
 import tempfile
 import os
+import json
+from typing import Any
 from fastapi import APIRouter, HTTPException, File, UploadFile, Form
-from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 from app.api.schemas import (
     IndexTextRequest,
     IndexResponse,
@@ -15,11 +17,19 @@ from app.api.schemas import (
     HybridQueryRequest,
     MultiStepQueryRequest,
     MultiStepQueryResponse,
+    VLMExtractRequest,
+    VLMExtractFileRequest,
+    VLMExtractResponse,
+    VLMCompareRequest,
+    VLMCompareResponse,
+    VLMOCRIndexResponse,
 )
 from app.services import index_service
 from app.services.document_service import DocumentService
 from app.services.similarity_service import find_similar_submissions
 from app.services.multi_step_query_service import MultiStepQueryService
+from app.services.vlm_service import VLMService
+from app.core.vlm_constants import DEFAULT_VLM_PROVIDER
 from app.core.retrievers import get_hybrid_retriever
 from app.core.querying import retrieve_chunks
 from app.core.prompts import RAG_QUERY_TEMPLATE
@@ -28,10 +38,55 @@ from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-router = APIRouter(tags=["Indexing", "Query", "Similarity", "Health"])
+router = APIRouter(tags=["Indexing", "Query", "Similarity", "Health", "VLM-OCR"])
 
 document_service = DocumentService()
 multi_step_service = MultiStepQueryService()
+
+
+def _to_indexable_ocr_text(data: Any) -> str:
+    if data is None:
+        return ""
+
+    if isinstance(data, str):
+        return data.strip()
+
+    if isinstance(data, dict):
+        parts: list[str] = []
+
+        text_field = data.get("text")
+        if isinstance(text_field, str) and text_field.strip():
+            parts.append(text_field.strip())
+        elif isinstance(text_field, list):
+            for item in text_field:
+                if isinstance(item, str) and item.strip():
+                    parts.append(item.strip())
+
+        tables_field = data.get("tables")
+        if isinstance(tables_field, list):
+            for table_item in tables_field:
+                if isinstance(table_item, str) and table_item.strip():
+                    parts.append(table_item.strip())
+                elif isinstance(table_item, (dict, list)):
+                    parts.append(json.dumps(table_item))
+
+        if parts:
+            return "\n\n".join(parts)
+
+        return json.dumps(data)
+
+    if isinstance(data, list):
+        parts: list[str] = []
+        for item in data:
+            if isinstance(item, str) and item.strip():
+                parts.append(item.strip())
+            elif isinstance(item, (dict, list)):
+                parts.append(json.dumps(item))
+            else:
+                parts.append(str(item))
+        return "\n\n".join(p for p in parts if p.strip())
+
+    return str(data).strip()
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -252,3 +307,154 @@ async def query_multi_step(request: MultiStepQueryRequest):
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
     return HealthResponse(status="ok")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# VLM OCR ROUTES
+# ═══════════════════════════════════════════════════════════════════
+
+@router.post("/vlm/extract", response_model=VLMExtractResponse)
+async def vlm_extract(request: VLMExtractRequest, file: UploadFile = File(...)):
+    """Extract structured data from image using VLM."""
+    temp_file_path = ""
+    try:
+        suffix = os.path.splitext(file.filename)[1] or ".jpg"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            content = await file.read()
+            tmp.write(content)
+            temp_file_path = tmp.name
+
+        vlm_service = VLMService(provider=request.provider)
+        result = vlm_service.extract_structured(image_path=temp_file_path, schema=request.schema)
+        
+        return VLMExtractResponse(
+            success=result.get("success", False),
+            provider=result.get("provider", request.provider),
+            data=result.get("data"),
+            error=result.get("error"),
+        )
+    except Exception as e:
+        logger.error(f"VLM extraction failed: {e}")
+        raise HTTPException(status_code=500, detail=f"VLM extraction failed: {e}")
+    finally:
+        if temp_file_path and os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+
+
+@router.post("/vlm/ocr/index", response_model=VLMOCRIndexResponse)
+async def vlm_ocr_index(
+    submission_id: int = Form(...),
+    provider: str = Form(DEFAULT_VLM_PROVIDER),
+    schema_json: str | None = Form(default=None),
+    file: UploadFile = File(...),
+):
+    """Run OCR with VLM and index extracted text into vector DB for later querying."""
+    temp_file_path = ""
+    try:
+        schema: dict | None = None
+        normalized_schema_json = (schema_json or "").strip()
+        # Swagger text fields sometimes submit placeholder values such as "string".
+        if normalized_schema_json and normalized_schema_json.lower() not in {"string", "none", "null"}:
+            try:
+                parsed_schema = json.loads(normalized_schema_json)
+            except json.JSONDecodeError as e:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"schema_json must be valid JSON object (example: {{\"text\": \"string\"}}): {e.msg}",
+                ) from e
+            if not isinstance(parsed_schema, dict):
+                raise HTTPException(status_code=422, detail="schema_json must decode to a JSON object")
+            schema = parsed_schema
+
+        try:
+            validated_request = VLMExtractFileRequest(
+                provider=provider,
+                schema=schema,
+                submission_id=submission_id,
+            )
+        except ValidationError as e:
+            raise HTTPException(status_code=422, detail=e.errors()) from e
+
+        if validated_request.submission_id is None:
+            raise HTTPException(status_code=422, detail="submission_id is required")
+
+        suffix = os.path.splitext(file.filename)[1] or ".jpg"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            content = await file.read()
+            tmp.write(content)
+            temp_file_path = tmp.name
+
+        vlm_service = VLMService(provider=validated_request.provider)
+        result = vlm_service.extract_structured(
+            image_path=temp_file_path,
+            schema=validated_request.schema,
+        )
+
+        if not result.get("success", False):
+            return VLMOCRIndexResponse(
+                success=False,
+                provider=result.get("provider", validated_request.provider),
+                submission_id=validated_request.submission_id,
+                error=result.get("error") or "OCR extraction failed",
+            )
+
+        extracted_text = _to_indexable_ocr_text(result.get("data"))
+        if not extracted_text:
+            raise HTTPException(status_code=422, detail="OCR completed but no indexable text was extracted")
+
+        index_result = index_service.index_text(
+            content=extracted_text,
+            submission_id=validated_request.submission_id,
+        )
+
+        return VLMOCRIndexResponse(
+            success=True,
+            provider=result.get("provider", validated_request.provider),
+            submission_id=validated_request.submission_id,
+            chunks=index_result["chunk_count"],
+            indexed_chars=len(extracted_text),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "VLM OCR indexing failed",
+            extra={"submission_id": submission_id, "provider": provider, "error": str(e)},
+        )
+        raise HTTPException(status_code=500, detail=f"VLM OCR indexing failed: {e}")
+    finally:
+        if temp_file_path and os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+
+
+@router.post("/vlm/compare", response_model=VLMCompareResponse)
+async def vlm_compare(request: VLMCompareRequest, file: UploadFile = File(...)):
+    """Compare VLM extraction across GPT-4o, Claude, and Gemini 3 Flash."""
+    temp_file_path = ""
+    try:
+        suffix = os.path.splitext(file.filename)[1] or ".jpg"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            content = await file.read()
+            tmp.write(content)
+            temp_file_path = tmp.name
+
+        vlm_service = VLMService()
+        results = vlm_service.compare_all(image_path=temp_file_path, schema=request.schema)
+        
+        return VLMCompareResponse(
+            results=[
+                VLMExtractResponse(
+                    success=r.get("success", False),
+                    provider=r.get("provider", "unknown"),
+                    data=r.get("data"),
+                    error=r.get("error"),
+                )
+                for r in results
+            ]
+        )
+    except Exception as e:
+        logger.error(f"VLM comparison failed: {e}")
+        raise HTTPException(status_code=500, detail=f"VLM comparison failed: {e}")
+    finally:
+        if temp_file_path and os.path.exists(temp_file_path):
+            os.remove(temp_file_path)

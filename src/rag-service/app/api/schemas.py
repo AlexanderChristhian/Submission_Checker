@@ -1,4 +1,9 @@
 from pydantic import BaseModel, Field, field_validator
+from app.core.vlm_constants import (
+    DEFAULT_VLM_PROVIDER,
+    SUPPORTED_VLM_PROVIDERS,
+    VLM_PROVIDER_ALIASES,
+)
 
 
 # ── Request Models ─────────────────────────────────────────
@@ -120,3 +125,60 @@ class MultiStepQueryResponse(BaseModel):
     sources: list[SourceSnippet]
     sub_queries: list[str] | None = None
     transform_type: str | None = None
+
+
+# ── VLM OCR Schemas ────────────────────────────────────────
+
+VLM_PROVIDER_DESCRIPTION = f"VLM provider: {', '.join(SUPPORTED_VLM_PROVIDERS)}"
+
+class VLMExtractRequest(BaseModel):
+    provider: str = Field(default=DEFAULT_VLM_PROVIDER, description=VLM_PROVIDER_DESCRIPTION)
+    schema: dict | None = Field(default=None, description="JSON schema for extraction")
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, v: str) -> str:
+        normalized = VLM_PROVIDER_ALIASES.get(v, v)
+        if normalized not in SUPPORTED_VLM_PROVIDERS:
+            valid_providers = list(SUPPORTED_VLM_PROVIDERS) + list(VLM_PROVIDER_ALIASES.keys())
+            raise ValueError(f"provider must be one of {valid_providers}")
+        return normalized
+
+
+class VLMExtractFileRequest(BaseModel):
+    provider: str = Field(default=DEFAULT_VLM_PROVIDER, description=VLM_PROVIDER_DESCRIPTION)
+    schema: dict | None = None
+    submission_id: int | None = Field(default=None, gt=0)
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, v: str) -> str:
+        normalized = VLM_PROVIDER_ALIASES.get(v, v)
+        if normalized not in SUPPORTED_VLM_PROVIDERS:
+            valid_providers = list(SUPPORTED_VLM_PROVIDERS) + list(VLM_PROVIDER_ALIASES.keys())
+            raise ValueError(f"provider must be one of {valid_providers}")
+        return normalized
+
+
+class VLMCompareRequest(BaseModel):
+    schema: dict | None = None
+
+
+class VLMExtractResponse(BaseModel):
+    success: bool
+    provider: str
+    data: dict | None = None
+    error: str | None = None
+
+
+class VLMCompareResponse(BaseModel):
+    results: list[VLMExtractResponse]
+
+
+class VLMOCRIndexResponse(BaseModel):
+    success: bool
+    provider: str
+    submission_id: int
+    chunks: int = 0
+    indexed_chars: int = 0
+    error: str | None = None

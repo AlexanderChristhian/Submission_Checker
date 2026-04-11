@@ -4,8 +4,6 @@ from typing import Optional
 from app.stores.chroma_store import get_collection
 from app.core.embeddings import generate_embedding
 from app.utils.logger import get_logger
-from llama_index.core import Document
-from llama_index.retrievers.bm25 import BM25Retriever as LlamaIndexBM25Retriever
 
 logger = get_logger(__name__)
 
@@ -179,6 +177,7 @@ def _create_vector_retriever(
     top_k: int,
 ):
     """Create a vector retriever for the given documents."""
+    # Import LlamaIndex modules inside function to avoid top-level imports
     from llama_index.core import Document, VectorStoreIndex
     from llama_index.core import StorageContext
     from llama_index.vector_stores.chroma import ChromaVectorStore
@@ -195,6 +194,7 @@ def _create_vector_retriever(
     chroma_store = ChromaVectorStore(chroma_collection=collection)
     storage_context = StorageContext.from_defaults(vector_store=chroma_store)
     
+    # LlamaIndex will use the globally configured embedding model
     index = VectorStoreIndex.from_documents(
         docs, 
         storage_context=storage_context,
@@ -210,6 +210,9 @@ def _create_bm25_retriever(
     top_k: int,
 ):
     """Create a BM25 retriever for the given documents."""
+    # Import LlamaIndex modules inside function to avoid top-level imports
+    from llama_index.core import Document
+    from llama_index.retrievers.bm25 import BM25Retriever as LlamaIndexBM25Retriever
 
     docs = [
         Document(text=text, metadata=meta)

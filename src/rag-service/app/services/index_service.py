@@ -1,5 +1,3 @@
-from llama_index.core import Document
-
 from app.core.indexing import chunk_document, chunk_llama_documents
 from app.core.embeddings import generate_embeddings
 from app.stores.chroma_store import get_collection
@@ -11,7 +9,14 @@ logger = get_logger(__name__)
 class IndexService:
     """Service for indexing documents into vector store."""
 
-    def index_file(self, documents: list[Document], submission_id: int) -> dict:
+    def index_file(self, documents: list, submission_id: int) -> dict:
+        # Import Document type for type checking (optional)
+        from llama_index.core import Document
+        
+        # Ensure documents are Document objects
+        if documents and not isinstance(documents[0], Document):
+            raise TypeError("Documents must be LlamaIndex Document objects")
+        
         chunks = chunk_llama_documents(documents, submission_id)
         return self._embed_and_store(chunks, submission_id)
 

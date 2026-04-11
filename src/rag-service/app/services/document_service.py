@@ -2,12 +2,6 @@ import os
 from pathlib import Path
 from typing import List
 
-from llama_index.core import Document, SimpleDirectoryReader
-try:
-    from llama_index.readers.file import PDFReader
-except ImportError:
-    PDFReader = None
-
 from app.utils.text_processing import clean_text
 from app.utils.logger import get_logger
 
@@ -17,11 +11,18 @@ logger = get_logger(__name__)
 class DocumentService:
     """Handles document loading, cleaning, and preprocessing."""
 
-    def load_document(self, file_path: str, submission_id: int, extra_metadata: dict = None) -> List[Document]:
+    def load_document(self, file_path: str, submission_id: int, extra_metadata: dict = None) -> List:
         """
         Load a document (PDF or Markdown) and return a list of standard LlamaIndex Documents.
         Automatically attaches relevant metadata like submission_id.
         """
+        # Import LlamaIndex modules inside function to avoid top-level imports
+        from llama_index.core import Document, SimpleDirectoryReader
+        try:
+            from llama_index.readers.file import PDFReader
+        except ImportError:
+            PDFReader = None
+        
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
 

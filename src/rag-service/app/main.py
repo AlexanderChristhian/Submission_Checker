@@ -1,7 +1,14 @@
 from fastapi import FastAPI
-from app.api.routes import router
 from app.config import settings
 from app.utils.logger import get_logger
+
+# Configure LlamaIndex BEFORE importing any modules that use LlamaIndex
+# This ensures global settings are set before LlamaIndex defaults are used
+from app.core.llama_settings import configure_llama_index
+configure_llama_index()
+
+# Now import the router which imports services that use LlamaIndex
+from app.api.routes import router
 
 logger = get_logger(__name__)
 
