@@ -1,6 +1,7 @@
 import tempfile
 import os
 import json
+import shutil
 from typing import Any
 from fastapi import APIRouter, HTTPException, File, UploadFile, Form
 from pydantic import ValidationError
@@ -42,6 +43,123 @@ router = APIRouter(tags=["Indexing", "Query", "Similarity", "Health", "VLM-OCR"]
 
 document_service = DocumentService()
 multi_step_service = MultiStepQueryService()
+
+MAX_VLM_UPLOAD_BYTES = 20 * 1024 * 1024
+
+_VLM_IMAGE_MIME_BY_EXTENSION = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+    ".bmp": "image/bmp",
+    ".tif": "image/tiff",
+    ".tiff": "image/tiff",
+}
+
+_VLM_ALLOWED_IMAGE_MIME_TYPES = set(_VLM_IMAGE_MIME_BY_EXTENSION.values())
+
+
+def _normalize_upload_mime_type(mime_type: str | None) -> str | None:
+    if not mime_type:
+        return None
+
+    normalized = mime_type.split(";")[0].strip().lower()
+    if normalized == "image/jpg":
+        return "image/jpeg"
+    return normalized or None
+
+
+def _detect_image_mime_from_signature(signature: bytes) -> str | None:
+    if signature.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if signature.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if signature.startswith(b"GIF87a") or signature.startswith(b"GIF89a"):
+        return "image/gif"
+    if signature.startswith(b"BM"):
+        return "image/bmp"
+    if signature.startswith(b"II*\x00") or signature.startswith(b"MM\x00*"):
+        return "image/tiff"
+    if len(signature) >= 12 and signature.startswith(b"RIFF") and signature[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def _get_upload_size_bytes(file: UploadFile) -> int:
+    file.file.seek(0, os.SEEK_END)
+    size_bytes = file.file.tell()
+    file.file.seek(0)
+    return size_bytes
+
+
+def _validate_vlm_upload_file(file: UploadFile) -> tuple[str, str, int]:
+    filename = (file.filename or "").strip()
+    if not filename:
+        raise HTTPException(status_code=422, detail="Uploaded file must include a filename")
+
+    suffix = os.path.splitext(filename)[1].lower()
+    if suffix not in _VLM_IMAGE_MIME_BY_EXTENSION:
+        allowed_extensions = ", ".join(sorted(_VLM_IMAGE_MIME_BY_EXTENSION.keys()))
+        raise HTTPException(
+            status_code=415,
+            detail=f"Unsupported file extension '{suffix or 'none'}'. Allowed extensions: {allowed_extensions}",
+        )
+
+    declared_mime_type = _normalize_upload_mime_type(file.content_type)
+    if declared_mime_type and declared_mime_type not in _VLM_ALLOWED_IMAGE_MIME_TYPES and declared_mime_type != "application/octet-stream":
+        allowed_mime_types = ", ".join(sorted(_VLM_ALLOWED_IMAGE_MIME_TYPES))
+        raise HTTPException(
+            status_code=415,
+            detail=f"Unsupported content type '{declared_mime_type}'. Allowed MIME types: {allowed_mime_types}",
+        )
+
+    size_bytes = _get_upload_size_bytes(file)
+    if size_bytes <= 0:
+        raise HTTPException(status_code=422, detail="Uploaded file is empty")
+    if size_bytes > MAX_VLM_UPLOAD_BYTES:
+        max_mb = MAX_VLM_UPLOAD_BYTES // (1024 * 1024)
+        raise HTTPException(
+            status_code=413,
+            detail=f"Uploaded file is too large ({size_bytes} bytes). Maximum allowed size is {max_mb}MB",
+        )
+
+    signature = file.file.read(32)
+    file.file.seek(0)
+    detected_mime_type = _detect_image_mime_from_signature(signature)
+    if detected_mime_type is None:
+        raise HTTPException(
+            status_code=415,
+            detail="Uploaded file is not a recognized image format (jpeg/png/webp/gif/bmp/tiff)",
+        )
+
+    expected_mime_from_extension = _VLM_IMAGE_MIME_BY_EXTENSION[suffix]
+    if expected_mime_from_extension != detected_mime_type:
+        raise HTTPException(
+            status_code=415,
+            detail=(
+                f"File extension '{suffix}' does not match file signature. "
+                f"Detected MIME type is '{detected_mime_type}'"
+            ),
+        )
+
+    if declared_mime_type and declared_mime_type not in {"application/octet-stream", detected_mime_type}:
+        raise HTTPException(
+            status_code=415,
+            detail=(
+                f"Declared content type '{declared_mime_type}' does not match detected type "
+                f"'{detected_mime_type}'"
+            ),
+        )
+
+    return suffix, detected_mime_type, size_bytes
+
+
+def _save_upload_to_temp_file(file: UploadFile, suffix: str) -> str:
+    file.file.seek(0)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        shutil.copyfileobj(file.file, tmp, length=1024 * 1024)
+        return tmp.name
 
 
 def _to_indexable_ocr_text(data: Any) -> str:
@@ -318,14 +436,21 @@ async def vlm_extract(request: VLMExtractRequest, file: UploadFile = File(...)):
     """Extract structured data from image using VLM."""
     temp_file_path = ""
     try:
-        suffix = os.path.splitext(file.filename)[1] or ".jpg"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            content = await file.read()
-            tmp.write(content)
-            temp_file_path = tmp.name
+        suffix, detected_mime_type, _ = _validate_vlm_upload_file(file)
+        temp_file_path = _save_upload_to_temp_file(file, suffix)
 
         vlm_service = VLMService(provider=request.provider)
-        result = vlm_service.extract_structured(image_path=temp_file_path, schema=request.schema)
+        result = vlm_service.extract_structured(
+            image_path=temp_file_path,
+            schema=request.schema,
+            mime_type=detected_mime_type,
+        )
+
+        if not result.get("success", False):
+            raise HTTPException(
+                status_code=502,
+                detail=result.get("error") or "VLM extraction failed",
+            )
         
         return VLMExtractResponse(
             success=result.get("success", False),
@@ -333,6 +458,8 @@ async def vlm_extract(request: VLMExtractRequest, file: UploadFile = File(...)):
             data=result.get("data"),
             error=result.get("error"),
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"VLM extraction failed: {e}")
         raise HTTPException(status_code=500, detail=f"VLM extraction failed: {e}")
@@ -378,24 +505,20 @@ async def vlm_ocr_index(
         if validated_request.submission_id is None:
             raise HTTPException(status_code=422, detail="submission_id is required")
 
-        suffix = os.path.splitext(file.filename)[1] or ".jpg"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            content = await file.read()
-            tmp.write(content)
-            temp_file_path = tmp.name
+        suffix, detected_mime_type, _ = _validate_vlm_upload_file(file)
+        temp_file_path = _save_upload_to_temp_file(file, suffix)
 
         vlm_service = VLMService(provider=validated_request.provider)
         result = vlm_service.extract_structured(
             image_path=temp_file_path,
             schema=validated_request.schema,
+            mime_type=detected_mime_type,
         )
 
         if not result.get("success", False):
-            return VLMOCRIndexResponse(
-                success=False,
-                provider=result.get("provider", validated_request.provider),
-                submission_id=validated_request.submission_id,
-                error=result.get("error") or "OCR extraction failed",
+            raise HTTPException(
+                status_code=502,
+                detail=result.get("error") or "OCR extraction failed",
             )
 
         extracted_text = _to_indexable_ocr_text(result.get("data"))
@@ -432,14 +555,15 @@ async def vlm_compare(request: VLMCompareRequest, file: UploadFile = File(...)):
     """Compare VLM extraction across GPT-4o, Claude, and Gemini 3 Flash."""
     temp_file_path = ""
     try:
-        suffix = os.path.splitext(file.filename)[1] or ".jpg"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            content = await file.read()
-            tmp.write(content)
-            temp_file_path = tmp.name
+        suffix, detected_mime_type, _ = _validate_vlm_upload_file(file)
+        temp_file_path = _save_upload_to_temp_file(file, suffix)
 
         vlm_service = VLMService()
-        results = vlm_service.compare_all(image_path=temp_file_path, schema=request.schema)
+        results = vlm_service.compare_all(
+            image_path=temp_file_path,
+            schema=request.schema,
+            mime_type=detected_mime_type,
+        )
         
         return VLMCompareResponse(
             results=[

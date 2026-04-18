@@ -1,19 +1,23 @@
 import DataTable from "@/components/UI/DataTable";
 import StatusBadge from "@/components/UI/StatusBadge";
 import GradeBadge from "@/components/UI/GradeBadge";
+import type { SubmissionPreview } from "@/types/submission";
 
-export interface Submission {
-  id: string;
-  name: string;
-  date: string;
-  status: string;
-  fileUrl: string;
-  grades: string;
+function formatDate(dateValue: string): string {
+  const parsed = new Date(dateValue);
+  if (Number.isNaN(parsed.getTime())) {
+    return dateValue;
+  }
+  return parsed.toLocaleDateString("en-US", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 interface SubmissionsTableProps {
   title: string;
-  submissions: Submission[];
+  submissions: SubmissionPreview[];
 }
 
 export default function SubmissionsTable({ title, submissions }: SubmissionsTableProps) {
@@ -43,15 +47,15 @@ export default function SubmissionsTable({ title, submissions }: SubmissionsTabl
               <td className="py-3 font-mono text-xs">{sub.id}</td>
               <td className="py-3">
                 <a href={sub.fileUrl} className="text-blue-500 hover:text-blue-700" target="_blank" rel="noopener noreferrer">
-                    {sub.name}
+                    {sub.title}
                 </a>
               </td>
-              <td className="py-3 text-zinc-500 dark:text-zinc-400">{sub.date}</td>
+              <td className="py-3 text-zinc-500 dark:text-zinc-400">{formatDate(sub.submittedAt)}</td>
               <td className="py-3">
                 <StatusBadge status={sub.status} />
               </td>
               <td className="py-3">
-                <GradeBadge grade={sub.grades} />
+                <GradeBadge grade={sub.grade === null ? "N/A" : String(sub.grade)} />
               </td>
             </tr>
           ))}

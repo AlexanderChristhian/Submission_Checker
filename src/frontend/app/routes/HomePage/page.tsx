@@ -3,6 +3,7 @@ import PageHeader from "@/components/UI/PageHeader";
 import StatCard from "@/components/UI/StatCard";
 import SubmissionsTable from "@/components/UI/SubmissionsTable";
 import UploadFile from "@/components/UI/UploadFile";
+import type { SubmissionPreview } from "@/types/submission";
 
 const stats = [
   { label: "Total Submissions", value: 67 },
@@ -10,12 +11,47 @@ const stats = [
   { label: "Checked", value: 55 },
 ];
 
-const recentSubmissions = [
-  { id: "SUB-1042", name: "Lab Report — Physics 201", date: "8 Mar 2026", status: "Checked", fileUrl: "https://example.com/files/sub-1042.pdf", grades: "95" },
-  { id: "SUB-1041", name: "Essay — Modern Literature", date: "7 Mar 2026", status: "Pending", fileUrl: "https://example.com/files/sub-1041.pdf", grades: "N/A" },
-  { id: "SUB-1040", name: "Problem Set 5 — Calculus II", date: "6 Mar 2026", status: "Checked", fileUrl: "https://example.com/files/sub-1040.pdf", grades: "88" },
-  { id: "SUB-1039", name: "Research Proposal — Biology", date: "5 Mar 2026", status: "Pending", fileUrl: "https://example.com/files/sub-1039.pdf", grades: "N/A" },
-  { id: "SUB-1038", name: "Case Study — Business Ethics", date: "4 Mar 2026", status: "Checked", fileUrl: "https://example.com/files/sub-1038.pdf", grades: "92" },
+const recentSubmissions: SubmissionPreview[] = [
+  {
+    id: "SUB-1042",
+    title: "Lab Report - Physics 201",
+    submittedAt: "2026-03-08T10:00:00.000Z",
+    status: "Checked",
+    fileUrl: "https://example.com/files/sub-1042.pdf",
+    grade: 95,
+  },
+  {
+    id: "SUB-1041",
+    title: "Essay - Modern Literature",
+    submittedAt: "2026-03-07T10:00:00.000Z",
+    status: "Pending",
+    fileUrl: "https://example.com/files/sub-1041.pdf",
+    grade: null,
+  },
+  {
+    id: "SUB-1040",
+    title: "Problem Set 5 - Calculus II",
+    submittedAt: "2026-03-06T10:00:00.000Z",
+    status: "Checked",
+    fileUrl: "https://example.com/files/sub-1040.pdf",
+    grade: 88,
+  },
+  {
+    id: "SUB-1039",
+    title: "Research Proposal - Biology",
+    submittedAt: "2026-03-05T10:00:00.000Z",
+    status: "Pending",
+    fileUrl: "https://example.com/files/sub-1039.pdf",
+    grade: null,
+  },
+  {
+    id: "SUB-1038",
+    title: "Case Study - Business Ethics",
+    submittedAt: "2026-03-04T10:00:00.000Z",
+    status: "Checked",
+    fileUrl: "https://example.com/files/sub-1038.pdf",
+    grade: 92,
+  },
 ];
 
 export default function HomePage() {

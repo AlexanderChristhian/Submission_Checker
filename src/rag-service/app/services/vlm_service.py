@@ -1,5 +1,6 @@
 import base64
 import json
+import mimetypes
 import re
 from abc import ABC, abstractmethod
 from typing import Any
@@ -13,14 +14,63 @@ from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+SUPPORTED_IMAGE_MIME_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+    "image/bmp",
+    "image/tiff",
+}
+
+_DATA_URL_PATTERN = re.compile(
+    r"^data:(?P<mime>[\w.+-]+/[\w.+-]+);base64,(?P<data>.+)$",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+
+
+def _normalize_image_mime_type(mime_type: str | None) -> str:
+    normalized = (mime_type or "image/jpeg").strip().lower()
+    if normalized == "image/jpg":
+        normalized = "image/jpeg"
+    if normalized not in SUPPORTED_IMAGE_MIME_TYPES:
+        raise ValueError(
+            f"Unsupported image MIME type: {mime_type}. Allowed: {sorted(SUPPORTED_IMAGE_MIME_TYPES)}"
+        )
+    return normalized
+
+
+def _split_data_url(image_base64: str) -> tuple[str, str | None]:
+    payload = image_base64.strip()
+    data_url_match = _DATA_URL_PATTERN.match(payload)
+    if not data_url_match:
+        return payload, None
+
+    return data_url_match.group("data"), data_url_match.group("mime")
+
+
+def _guess_mime_type_from_path(image_path: str, fallback_mime_type: str | None = None) -> str:
+    guessed_mime_type, _ = mimetypes.guess_type(image_path)
+    return _normalize_image_mime_type(guessed_mime_type or fallback_mime_type)
+
 
 class VLMBase(ABC):
     @abstractmethod
-    def extract_from_image(self, image_path: str, prompt: str) -> dict[str, Any]:
+    def extract_from_image(
+        self,
+        image_path: str,
+        prompt: str,
+        mime_type: str | None = None,
+    ) -> dict[str, Any]:
         pass
 
     @abstractmethod
-    def extract_from_base64(self, image_base64: str, prompt: str) -> dict[str, Any]:
+    def extract_from_base64(
+        self,
+        image_base64: str,
+        prompt: str,
+        mime_type: str | None = None,
+    ) -> dict[str, Any]:
         pass
 
 
@@ -31,13 +81,27 @@ class GPT4VService(VLMBase):
         from openai import OpenAI
         self.client = OpenAI(api_key=api_key)
 
-    def extract_from_image(self, image_path: str, prompt: str) -> dict[str, Any]:
+    def extract_from_image(
+        self,
+        image_path: str,
+        prompt: str,
+        mime_type: str | None = None,
+    ) -> dict[str, Any]:
         with open(image_path, "rb") as f:
             image_data = base64.b64encode(f.read()).decode("utf-8")
-        return self.extract_from_base64(image_data, prompt)
+        resolved_mime_type = _guess_mime_type_from_path(image_path, mime_type)
+        return self.extract_from_base64(image_data, prompt, mime_type=resolved_mime_type)
 
-    def extract_from_base64(self, image_base64: str, prompt: str) -> dict[str, Any]:
+    def extract_from_base64(
+        self,
+        image_base64: str,
+        prompt: str,
+        mime_type: str | None = None,
+    ) -> dict[str, Any]:
         try:
+            image_payload, embedded_mime_type = _split_data_url(image_base64)
+            resolved_mime_type = _normalize_image_mime_type(mime_type or embedded_mime_type)
+
             response = self.client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
@@ -48,7 +112,7 @@ class GPT4VService(VLMBase):
                             {
                                 "type": "image_url",
                                 "image_url": {
-                                    "url": f"data:image/jpeg;base64,{image_base64}",
+                                    "url": f"data:{resolved_mime_type};base64,{image_payload}",
                                     "detail": "high"
                                 },
                             },
@@ -62,7 +126,7 @@ class GPT4VService(VLMBase):
             content = response.choices[0].message.content
             return {"success": True, "data": json.loads(content), "provider": "gpt-4o"}
         except Exception as e:
-            logger.error(f"GPT-4V extraction failed: {e}")
+            logger.exception("GPT-4V extraction failed")
             return {"success": False, "error": str(e), "provider": "gpt-4o"}
 
 
@@ -73,13 +137,27 @@ class ClaudeVisionService(VLMBase):
         import anthropic
         self.client = anthropic.Anthropic(api_key=api_key)
 
-    def extract_from_image(self, image_path: str, prompt: str) -> dict[str, Any]:
+    def extract_from_image(
+        self,
+        image_path: str,
+        prompt: str,
+        mime_type: str | None = None,
+    ) -> dict[str, Any]:
         with open(image_path, "rb") as f:
             image_data = base64.b64encode(f.read()).decode("utf-8")
-        return self.extract_from_base64(image_data, prompt)
+        resolved_mime_type = _guess_mime_type_from_path(image_path, mime_type)
+        return self.extract_from_base64(image_data, prompt, mime_type=resolved_mime_type)
 
-    def extract_from_base64(self, image_base64: str, prompt: str) -> dict[str, Any]:
+    def extract_from_base64(
+        self,
+        image_base64: str,
+        prompt: str,
+        mime_type: str | None = None,
+    ) -> dict[str, Any]:
         try:
+            image_payload, embedded_mime_type = _split_data_url(image_base64)
+            resolved_mime_type = _normalize_image_mime_type(mime_type or embedded_mime_type)
+
             response = self.client.messages.create(
                 model="claude-3-5-sonnet-20241022",
                 max_tokens=4096,
@@ -91,8 +169,8 @@ class ClaudeVisionService(VLMBase):
                                 "type": "image",
                                 "source": {
                                     "type": "base64",
-                                    "media_type": "image/jpeg",
-                                    "data": image_base64,
+                                    "media_type": resolved_mime_type,
+                                    "data": image_payload,
                                 },
                             },
                             {"type": "text", "text": prompt},
@@ -103,7 +181,7 @@ class ClaudeVisionService(VLMBase):
             content = response.content[0].text
             return {"success": True, "data": json.loads(content), "provider": "claude-3-5-sonnet"}
         except Exception as e:
-            logger.error(f"Claude Vision extraction failed: {e}")
+            logger.exception("Claude Vision extraction failed")
             return {"success": False, "error": str(e), "provider": "claude-3-5-sonnet"}
 
 
@@ -197,7 +275,12 @@ class GeminiVisionService(VLMBase):
 
         raise ValueError("Gemini returned an empty response")
 
-    def extract_from_image(self, image_path: str, prompt: str) -> dict[str, Any]:
+    def extract_from_image(
+        self,
+        image_path: str,
+        prompt: str,
+        mime_type: str | None = None,
+    ) -> dict[str, Any]:
         try:
             from PIL import Image
             image = Image.open(image_path)
@@ -209,11 +292,17 @@ class GeminiVisionService(VLMBase):
             logger.error(f"Gemini Vision extraction failed: {e}")
             return {"success": False, "error": str(e), "provider": self.provider_name}
 
-    def extract_from_base64(self, image_base64: str, prompt: str) -> dict[str, Any]:
+    def extract_from_base64(
+        self,
+        image_base64: str,
+        prompt: str,
+        mime_type: str | None = None,
+    ) -> dict[str, Any]:
         try:
             import io
             from PIL import Image
-            image = Image.open(io.BytesIO(base64.b64decode(image_base64)))
+            image_payload, _ = _split_data_url(image_base64)
+            image = Image.open(io.BytesIO(base64.b64decode(image_payload)))
             response, used_model = self._generate_content_with_fallback([prompt, image])
             logger.info("Gemini extraction succeeded with model: %s", used_model)
             parsed_data = self._parse_response_payload(response, used_model)
@@ -257,13 +346,14 @@ class VLMService:
         image_path: str | None = None,
         image_base64: str | None = None,
         schema: dict[str, Any] | None = None,
+        mime_type: str | None = None,
     ) -> dict[str, Any]:
         prompt = self._build_prompt(schema)
         
         if image_path:
-            return self.service.extract_from_image(image_path, prompt)
+            return self.service.extract_from_image(image_path, prompt, mime_type=mime_type)
         elif image_base64:
-            return self.service.extract_from_base64(image_base64, prompt)
+            return self.service.extract_from_base64(image_base64, prompt, mime_type=mime_type)
         else:
             return {"success": False, "error": "No image provided", "provider": self.provider}
 
@@ -292,6 +382,7 @@ Respond with only the JSON object, no additional text."""
         image_path: str | None = None,
         image_base64: str | None = None,
         schema: dict[str, Any] | None = None,
+        mime_type: str | None = None,
     ) -> list[dict[str, Any]]:
         results = []
         for provider_name in self.PROVIDERS.keys():
@@ -301,9 +392,9 @@ Respond with only the JSON object, no additional text."""
                 prompt = self._build_prompt(schema)
                 
                 if image_path:
-                    result = service.extract_from_image(image_path, prompt)
+                    result = service.extract_from_image(image_path, prompt, mime_type=mime_type)
                 elif image_base64:
-                    result = service.extract_from_base64(image_base64, prompt)
+                    result = service.extract_from_base64(image_base64, prompt, mime_type=mime_type)
                 else:
                     continue
                     
