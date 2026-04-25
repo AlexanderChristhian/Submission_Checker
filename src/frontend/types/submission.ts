@@ -34,7 +34,16 @@ export interface SubmissionDashboardData {
 }
 
 export interface ApiResponse<T> {
-  ok: boolean;
+  ok: true;
   data: T;
   generatedAt: string;
 }
+
+export interface ApiError {
+  ok: false;
+  error: string;
+}
+
+export type SubmissionDashboardResponse =
+  | ApiResponse<SubmissionDashboardData>
+  | ApiError;
