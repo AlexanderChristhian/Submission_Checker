@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  labels:
+    app: backend
+data:
+  NODE_ENV: "production"
+  RAG_SERVICE_URL: "http://rag-service:8000"
