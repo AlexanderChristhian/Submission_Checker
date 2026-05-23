@@ -75,6 +75,17 @@ class FileSimilarResponse(BaseModel):
     matches: list[SimilarityMatch]
 
 
+class GraphQueryRequest(BaseModel):
+    cypher: str = Field(..., min_length=1, max_length=10000, description="Cypher query string")
+    params: dict = Field(default_factory=dict, description="Query parameters")
+
+
+class GraphQueryResponse(BaseModel):
+    success: bool
+    results: list[dict]
+    count: int
+
+
 class HealthResponse(BaseModel):
     status: str
 
@@ -125,6 +136,57 @@ class MultiStepQueryResponse(BaseModel):
     sources: list[SourceSnippet]
     sub_queries: list[str] | None = None
     transform_type: str | None = None
+
+
+# ── GraphRAG Schemas ───────────────────────────────────────
+
+class GraphRAGRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=10000, description="Search query string")
+    top_k: int = Field(default=5, ge=1, le=100, description="Number of vector results to retrieve")
+
+
+class GraphRelation(BaseModel):
+    submissionId: int | None = None
+    score: float | None = None
+
+
+class GraphNode(BaseModel):
+    title: str | None = None
+    status: str | None = None
+    similar: list[GraphRelation] = []
+    author: str | None = None
+    assignment: str | None = None
+
+
+class GraphRAGResponse(BaseModel):
+    answer: str
+    sources: list[SourceSnippet]
+    graph_sources: list[GraphNode]
+
+
+# ── Hybrid Graph Search Schemas ────────────────────────────
+
+class HybridGraphSearchRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=10000, description="Search query string")
+    top_k: int = Field(default=10, ge=1, le=100, description="Number of fused results")
+    fusion: str = Field(default="rrf", description="Fusion method: rrf or weighted")
+    alpha: float | None = Field(default=None, ge=0.0, le=1.0, description="Vector weight for weighted fusion")
+
+
+class HybridSearchItem(BaseModel):
+    id: str
+    fusion_score: float
+    vector_score: float | None = None
+    graph_score: float | None = None
+    text: str | None = None
+    title: str | None = None
+    source: str = "unknown"
+
+
+class HybridGraphSearchResponse(BaseModel):
+    results: list[HybridSearchItem]
+    vector_count: int
+    graph_count: int
 
 
 # ── VLM OCR Schemas ────────────────────────────────────────

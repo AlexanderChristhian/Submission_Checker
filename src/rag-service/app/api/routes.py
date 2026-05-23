@@ -15,6 +15,12 @@ from app.api.schemas import (
     DeleteRequest,
     HealthResponse,
     SourceSnippet,
+    GraphQueryRequest,
+    GraphQueryResponse,
+    GraphRAGRequest,
+    GraphRAGResponse,
+    HybridGraphSearchRequest,
+    HybridGraphSearchResponse,
     HybridQueryRequest,
     MultiStepQueryRequest,
     MultiStepQueryResponse,
@@ -29,17 +35,20 @@ from app.services import index_service
 from app.services.document_service import DocumentService
 from app.services.similarity_service import find_similar_submissions
 from app.services.multi_step_query_service import MultiStepQueryService
+from app.services.graphrag_service import graphrag_query
+from app.services.hybrid_graph_search import hybrid_search
 from app.services.vlm_service import VLMService
 from app.core.vlm_constants import DEFAULT_VLM_PROVIDER
 from app.core.retrievers import get_hybrid_retriever
 from app.core.querying import retrieve_chunks
 from app.core.prompts import RAG_QUERY_TEMPLATE
 from app.core.llm import llm_service
+from app.core.neo4j_client import neo4j_client
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-router = APIRouter(tags=["Indexing", "Query", "Similarity", "Health", "VLM-OCR"])
+router = APIRouter(tags=["Indexing", "Query", "Similarity", "Health", "Graph", "VLM-OCR"])
 
 document_service = DocumentService()
 multi_step_service = MultiStepQueryService()
@@ -341,7 +350,32 @@ async def find_similar(request: SimilarityRequest):
 
 
 # ═══════════════════════════════════════════════════════════════════
-# HYBRID SEARCH ROUTES
+# HYBRID GRAPH SEARCH ROUTE (Vector DB + Graph DB)
+# ═══════════════════════════════════════════════════════════════════
+
+@router.post("/query/hybrid-graph", response_model=HybridGraphSearchResponse)
+async def query_hybrid_graph(request: HybridGraphSearchRequest):
+    """Hybrid search fusing ChromaDB vector results with Neo4j graph results."""
+    try:
+        result = await hybrid_search(
+            query=request.query,
+            top_k=request.top_k,
+            fusion=request.fusion,
+            alpha=request.alpha,
+        )
+
+        return HybridGraphSearchResponse(
+            results=result["results"],
+            vector_count=len(result["vector_results"]),
+            graph_count=len(result["graph_results"]),
+        )
+    except Exception as e:
+        logger.error("Hybrid graph search failed", extra={"error": str(e)})
+        raise HTTPException(status_code=500, detail=f"Hybrid graph search failed: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# HYBRID SEARCH ROUTES (BM25 + Vector within ChromaDB)
 # ═══════════════════════════════════════════════════════════════════
 
 @router.post("/query/hybrid", response_model=QueryResponse)
@@ -419,12 +453,89 @@ async def query_multi_step(request: MultiStepQueryRequest):
 
 
 # ═══════════════════════════════════════════════════════════════════
+# GRAPHRAG ROUTE
+# ═══════════════════════════════════════════════════════════════════
+
+@router.post("/query/graphrag", response_model=GraphRAGResponse)
+async def query_graphrag(request: GraphRAGRequest):
+    """GraphRAG: vector search enriched with Neo4j knowledge graph context."""
+    try:
+        result = await graphrag_query(request.query, request.top_k)
+
+        sources = [
+            SourceSnippet(
+                text=c["text"],
+                score=c["score"],
+                submission_id=c["metadata"].get("submission_id"),
+            )
+            for c in result["chunks"]
+        ]
+
+        return GraphRAGResponse(
+            answer=result["answer"],
+            sources=sources,
+            graph_sources=result["graph_context"],
+        )
+    except Exception as e:
+        logger.error("GraphRAG query failed", extra={"error": str(e)})
+        raise HTTPException(status_code=500, detail=f"GraphRAG query failed: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# GRAPH ROUTES (Neo4j)
+# ═══════════════════════════════════════════════════════════════════
+
+@router.post("/graph/query", response_model=GraphQueryResponse)
+async def graph_query(request: GraphQueryRequest):
+    """Execute a Cypher query against Neo4j."""
+    try:
+        results = await neo4j_client.run_query(request.cypher, request.params)
+        return GraphQueryResponse(
+            success=True,
+            results=results,
+            count=len(results),
+        )
+    except ConnectionError as e:
+        raise HTTPException(status_code=503, detail=f"Neo4j unavailable: {e}")
+    except Exception as e:
+        logger.error("Graph query failed", extra={"cypher": request.cypher, "error": str(e)})
+        raise HTTPException(status_code=400, detail=f"Cypher query failed: {e}")
+
+
+@router.get("/graph/stats")
+async def graph_stats():
+    """Get Neo4j graph node and relationship counts."""
+    try:
+        await neo4j_client.verify()
+        stats = await neo4j_client.get_graph_stats()
+        return {"neo4j_connected": True, **stats}
+    except Exception:
+        return {"neo4j_connected": False, "node_count": 0, "relationship_count": 0}
+
+
+@router.get("/graph/nodes")
+async def graph_nodes():
+    """Get node counts grouped by label."""
+    try:
+        await neo4j_client.verify()
+        counts = await neo4j_client.get_node_counts()
+        return {"neo4j_connected": True, "labels": counts}
+    except Exception:
+        return {"neo4j_connected": False, "labels": []}
+
+
+# ═══════════════════════════════════════════════════════════════════
 # UTILITY ROUTES
 # ═══════════════════════════════════════════════════════════════════
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
-    return HealthResponse(status="ok")
+    neo4j_ok = False
+    try:
+        neo4j_ok = await neo4j_client.verify()
+    except Exception:
+        pass
+    return HealthResponse(status="ok" if neo4j_ok else "degraded")
 
 
 # ═══════════════════════════════════════════════════════════════════
