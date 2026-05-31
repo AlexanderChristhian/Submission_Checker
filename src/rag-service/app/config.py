@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
 
     # Chunking
-    chunk_size: int = 512 
+    chunk_size: int = 512
     chunk_overlap: int = 50
 
     # Neo4j
@@ -30,6 +30,18 @@ class Settings(BaseSettings):
     # Server
     host: str = "0.0.0.0"
     port: int = 8000
+
+    # CORS
+    cors_origins: list[str] = ["http://localhost:3000"]
+
+    # Caching
+    cache_default_ttl: int = 60
+    cache_enabled: bool = True
+
+    # Rate Limiting
+    rate_limit_enabled: bool = True
+    rate_limit_max_requests: int = 60
+    rate_limit_window_seconds: float = 60.0
 
     model_config = {"env_file": ".env"}
 

@@ -1,18 +1,16 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.utils.logger import get_logger
 
 # Configure LlamaIndex BEFORE importing any modules that use LlamaIndex
-# This ensures global settings are set before LlamaIndex defaults are used
 from app.core.llama_settings import configure_llama_index
 configure_llama_index()
 
-# Now import the router which imports services that use LlamaIndex
 from app.api.routes import router
-
-# Import Neo4j client for lifecycle management
 from app.core.neo4j_client import neo4j_client
+from app.middleware.timing import add_timing_middleware
 
 logger = get_logger(__name__)
 
@@ -32,9 +30,19 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="DigiChecker RAG Service",
     description="LlamaIndex + BGE-M3 + ChromaDB RAG service for submission analysis",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+add_timing_middleware(app)
 
 app.include_router(router)
 

@@ -2,6 +2,7 @@ import base64
 import json
 import mimetypes
 import re
+import time
 from abc import ABC, abstractmethod
 from typing import Any
 from app.config import settings
@@ -11,6 +12,12 @@ from app.core.vlm_constants import (
     VLM_PROVIDER_ALIASES,
 )
 from app.utils.logger import get_logger
+from app.services.vlm_validator import (
+    validate_extracted_data,
+    normalize_ocr_fields,
+    score_ocr_quality,
+    apply_guardrails,
+)
 
 logger = get_logger(__name__)
 
@@ -319,6 +326,9 @@ class VLMService:
         "gemini-3-flash": GeminiVisionService,
     }
 
+    MAX_RETRIES = 2
+    RETRY_DELAY_SECONDS = 1.0
+
     @staticmethod
     def _resolve_api_key(provider: str, api_key: str | None = None) -> str | None:
         if api_key:
@@ -347,35 +357,121 @@ class VLMService:
         image_base64: str | None = None,
         schema: dict[str, Any] | None = None,
         mime_type: str | None = None,
+        additional_rules: list[str] | None = None,
+        validate: bool = True,
     ) -> dict[str, Any]:
-        prompt = self._build_prompt(schema)
-        
-        if image_path:
-            return self.service.extract_from_image(image_path, prompt, mime_type=mime_type)
-        elif image_base64:
-            return self.service.extract_from_base64(image_base64, prompt, mime_type=mime_type)
-        else:
-            return {"success": False, "error": "No image provided", "provider": self.provider}
+        prompt = self._build_prompt(schema, additional_rules)
 
-    def _build_prompt(self, schema: dict[str, Any] | None = None) -> str:
+        last_error: str | None = None
+        for attempt in range(self.MAX_RETRIES + 1):
+            try:
+                if image_path:
+                    raw_result = self.service.extract_from_image(image_path, prompt, mime_type=mime_type)
+                elif image_base64:
+                    raw_result = self.service.extract_from_base64(image_base64, prompt, mime_type=mime_type)
+                else:
+                    return {"success": False, "error": "No image provided", "provider": self.provider}
+
+                if not raw_result.get("success", False):
+                    last_error = raw_result.get("error", "unknown error")
+                    if attempt < self.MAX_RETRIES:
+                        wait = self.RETRY_DELAY_SECONDS * (2 ** attempt)
+                        logger.warning("VLM extraction retry", extra={"attempt": attempt + 1, "provider": self.provider, "wait": wait})
+                        time.sleep(wait)
+                        continue
+                    return raw_result
+
+                if not validate:
+                    return raw_result
+
+                return self._post_process(raw_result, schema)
+
+            except Exception as e:
+                last_error = str(e)
+                if attempt < self.MAX_RETRIES:
+                    wait = self.RETRY_DELAY_SECONDS * (2 ** attempt)
+                    logger.warning("VLM extraction exception, retrying", extra={"attempt": attempt + 1, "wait": wait})
+                    time.sleep(wait)
+                    continue
+                return {"success": False, "error": last_error, "provider": self.provider}
+
+        return {"success": False, "error": last_error or "max retries exceeded", "provider": self.provider}
+
+    def _post_process(
+        self,
+        result: dict[str, Any],
+        schema: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        data = result.get("data")
+        if not data:
+            return result
+
+        normalized = normalize_ocr_fields(data)
+
+        schema_type_map: dict[str, str] | None = None
         if schema:
+            schema_type_map = {}
+            for key, value in schema.items():
+                if isinstance(value, str):
+                    schema_type_map[key] = value
+                elif isinstance(value, dict) and "type" in value:
+                    schema_type_map[key] = value["type"]
+
+        validation = validate_extracted_data(normalized, schema_type_map)
+
+        if "text" in normalized and isinstance(normalized["text"], str):
+            quality = score_ocr_quality(normalized["text"])
+        elif isinstance(data, str):
+            quality = score_ocr_quality(data)
+        else:
+            quality = score_ocr_quality(json.dumps(normalized))
+
+        result["data"] = validation["data"]
+        result["confidence"] = validation["confidence"]
+        result["validation"] = {
+            "valid": validation["valid"],
+            "field_scores": validation["field_scores"],
+            "issues": validation["issues"],
+        }
+        result["quality"] = quality
+
+        if not validation["valid"]:
+            logger.warning("VLM extracted data failed validation", extra={"issues": validation["issues"], "confidence": validation["confidence"]})
+
+        return result
+
+    def _build_prompt(self, schema: dict[str, Any] | None = None, additional_rules: list[str] | None = None) -> str:
+        if schema:
+            schema_type_map = {}
+            for key, value in schema.items():
+                if isinstance(value, str):
+                    schema_type_map[key] = value
+                elif isinstance(value, dict) and "type" in value:
+                    schema_type_map[key] = value["type"]
+                else:
+                    schema_type_map[key] = "string"
+
             schema_str = json.dumps(schema, indent=2)
-            return f"""You are a document extraction assistant. Analyze the provided image and extract structured data.
-            
-Output ONLY valid JSON matching this schema:
+            base = f"""You are a document extraction assistant. Analyze the provided image and extract structured data.
+
+Required JSON schema:
 {schema_str}
 
+Field types:
+{json.dumps(schema_type_map, indent=2)}
+
 Respond with only the JSON object, no additional text."""
-        return """You are a document extraction assistant. Analyze the provided image and extract all text content.
-        
+            return apply_guardrails(base, additional_rules)
+
+        base = """You are a document extraction assistant. Analyze the provided image and extract all text content.
+
 Output the extracted text as JSON with the following structure:
 {{
     "text": "extracted text content",
     "tables": ["table data if any"],
     "metadata": {{"document_type": "type if identifiable"}}
-}}
-
-Respond with only the JSON object, no additional text."""
+}}"""
+        return apply_guardrails(base, additional_rules)
 
     def compare_all(
         self,
