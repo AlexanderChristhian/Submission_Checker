@@ -6,6 +6,12 @@ from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+QUALITY_ALPHA_LOW_THRESHOLD = 0.3
+QUALITY_ALPHA_MEDIUM_THRESHOLD = 0.2
+QUALITY_NOISE_CHAR_THRESHOLD = 0.1
+QUALITY_MIN_LENGTH_RATIO = 0.01
+QUALITY_MAX_LENGTH_RATIO = 0.5
+
 DATE_PATTERNS = [
     (re.compile(r"\d{4}-\d{2}-\d{2}"), "%Y-%m-%d"),
     (re.compile(r"\d{2}/\d{2}/\d{4}"), "%m/%d/%Y"),
@@ -150,31 +156,43 @@ def score_ocr_quality(text: str) -> dict[str, Any]:
     score = 1.0
 
     char_count = len(text)
-    if char_count < 10:
-        score -= 0.3
+    MIN_CHARS = 10
+    MIN_WORDS = 3
+    ALPHA_LOW_RATIO = 0.3
+    ALPHA_MODERATE_RATIO = 0.5
+    SHORT_TEXT_PENALTY = 0.3
+    FEW_WORDS_PENALTY = 0.2
+    LOW_ALPHA_PENALTY = 0.2
+    MODERATE_ALPHA_PENALTY = 0.1
+    REPETITION_PENALTY = 0.2
+    GARBAGE_PENALTY = 0.3
+    GARBAGE_THRESHOLD = 0.01
+
+    if char_count < MIN_CHARS:
+        score -= SHORT_TEXT_PENALTY
         issues.append("very short text")
 
     word_count = len(text.split())
-    if word_count < 3:
-        score -= 0.2
+    if word_count < MIN_WORDS:
+        score -= FEW_WORDS_PENALTY
         issues.append("fewer than 3 words")
 
     alpha_ratio = sum(1 for c in text if c.isalpha()) / max(char_count, 1)
-    if alpha_ratio < 0.3:
-        score -= 0.2
+    if alpha_ratio < ALPHA_LOW_RATIO:
+        score -= LOW_ALPHA_PENALTY
         issues.append("low alphabetic content ratio")
-    elif alpha_ratio < 0.5:
-        score -= 0.1
+    elif alpha_ratio < ALPHA_MODERATE_RATIO:
+        score -= MODERATE_ALPHA_PENALTY
         issues.append("moderate alphabetic content ratio")
 
     repeated_pattern = re.search(r"(.)\1{4,}", text)
     if repeated_pattern:
-        score -= 0.2
+        score -= REPETITION_PENALTY
         issues.append("contains character repetition (possible noise)")
 
     garbage_ratio = sum(1 for c in text if c in "�\x00\x01\x02\x1a") / max(char_count, 1)
-    if garbage_ratio > 0.01:
-        score -= 0.3
+    if garbage_ratio > GARBAGE_THRESHOLD:
+        score -= GARBAGE_PENALTY
         issues.append("contains non-printable characters")
 
     return {

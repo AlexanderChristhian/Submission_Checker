@@ -106,8 +106,7 @@ export async function initializeGraphSchema(): Promise<void> {
       await runQuery(constraint.cypher);
       logger.info({ constraint: constraint.name }, "Constraint ensured");
     } catch (err) {
-      logger.error({ constraint: constraint.name, err }, "Failed to create constraint");
-      throw err;
+      logger.warn({ constraint: constraint.name, err }, "Failed to create constraint — continuing");
     }
   }
 
@@ -116,8 +115,7 @@ export async function initializeGraphSchema(): Promise<void> {
       await runQuery(index.cypher);
       logger.info({ index: index.name }, "Index ensured");
     } catch (err) {
-      logger.error({ index: index.name, err }, "Failed to create index");
-      throw err;
+      logger.warn({ index: index.name, err }, "Failed to create index — continuing");
     }
   }
 

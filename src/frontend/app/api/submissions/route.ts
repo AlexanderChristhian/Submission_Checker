@@ -1,6 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSubmissionDashboard } from "@/lib/submission-dashboard";
 import type { SubmissionDashboardResponse } from "@/types/submission";
+
+const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:3001";
+
+async function fetchFromBackend(path: string, options?: RequestInit) {
+  const url = `${BACKEND_URL}${path}`;
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      Accept: "application/json",
+      ...options?.headers,
+    },
+    signal: options?.signal ?? AbortSignal.timeout(10000),
+  });
+
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok || !payload) {
+    return {
+      ok: false as const,
+      error: payload?.error || `Backend returned ${response.status}`,
+    };
+  }
+
+  return payload;
+}
 
 export async function GET(
   request: NextRequest,
@@ -12,8 +36,9 @@ export async function GET(
   }
 
   try {
-    const dashboard = await getSubmissionDashboard();
-    return NextResponse.json<SubmissionDashboardResponse>(dashboard, {
+    const result = await fetchFromBackend("/api/submissions");
+
+    return NextResponse.json<SubmissionDashboardResponse>(result, {
       status: 200,
     });
   } catch (error) {
@@ -36,12 +61,13 @@ async function streamDashboard(): Promise<Response> {
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const dashboard = await getSubmissionDashboard();
+        const result = await fetchFromBackend("/api/submissions");
 
-        const metadata = `data: ${JSON.stringify({ type: "metadata", total: dashboard.data?.summary.total ?? 0 })}\n\n`;
+        const data = result.data;
+        const metadata = `data: ${JSON.stringify({ type: "metadata", total: data?.summary?.total ?? 0 })}\n\n`;
         controller.enqueue(encoder.encode(metadata));
 
-        const submissions = dashboard.data?.submissions ?? [];
+        const submissions = data?.submissions ?? [];
         for (const submission of submissions) {
           const chunk = `data: ${JSON.stringify({ type: "submission", data: submission })}\n\n`;
           controller.enqueue(encoder.encode(chunk));

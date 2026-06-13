@@ -9,7 +9,7 @@ async function main() {
     try {
       getNeo4jDriver();
       await initializeGraphSchema();
-      logger.info("Neo4j connected and schema initialized");
+      logger.info("Neo4j driver created and schema initialized");
     } catch (err) {
       logger.warn({ err }, "Neo4j unavailable — graph features disabled");
     }

@@ -15,16 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Stage 2: Builder - Download models
-FROM deps AS builder
-
-# Pre-download BGE-M3 model (optional, can be done at runtime)
-# This reduces first-request latency
-ENV HF_HOME=/root/.cache/huggingface
-RUN python -c "from llama_index.embeddings.huggingface import HuggingFaceEmbedding; \
-    HuggingFaceEmbedding(model_name='BAAI/bge-m3')"
-
-# Stage 3: Production
+# Stage 2: Production
 FROM python:3.11-slim AS production
 
 WORKDIR /app

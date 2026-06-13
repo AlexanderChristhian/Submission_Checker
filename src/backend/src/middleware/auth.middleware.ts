@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { AppError } from "../utils/errors.js";
+import { config } from "../config/index.js";
 
-// Basic auth middleware placeholder — replace with real JWT verification
 export function authMiddleware(
   req: Request,
   _res: Response,
@@ -14,10 +14,18 @@ export function authMiddleware(
     return;
   }
 
-  // TODO: Verify JWT token and attach user to request
-  // const token = authHeader.split(" ")[1];
-  // const decoded = jwt.verify(token, config.JWT_SECRET);
-  // req.user = decoded;
+  const token = authHeader.split(" ")[1];
+  if (!token) {
+    next(new AppError("Authentication required", 401));
+    return;
+  }
 
-  next();
+  try {
+    const jwt = require("jsonwebtoken");
+    const decoded = jwt.verify(token, config.JWT_SECRET);
+    (req as Record<string, unknown>).user = decoded;
+    next();
+  } catch {
+    next(new AppError("Invalid or expired token", 401));
+  }
 }

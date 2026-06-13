@@ -12,6 +12,25 @@ export interface SimilarityResult {
   title: string;
 }
 
+interface GraphRAGResult {
+  answer: string;
+  chunks: Array<{ text: string; score: number; metadata: Record<string, unknown> }>;
+  graph_context: Array<Record<string, unknown>>;
+}
+
+interface HybridGraphResult {
+  results: Array<Record<string, unknown>>;
+  vector_count: number;
+  graph_count: number;
+}
+
+interface MultiStepResult {
+  answer: string;
+  sources: Array<{ text: string; score: number }>;
+  sub_queries: string[];
+  transform_type: string;
+}
+
 class RagService {
   private baseUrl: string;
 
@@ -53,6 +72,117 @@ class RagService {
     return response.json() as Promise<QueryResult>;
   }
 
+  async queryRag(query: string, topK: number = 5): Promise<QueryResult> {
+    const response = await fetch(`${this.baseUrl}/query/rag`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, top_k: topK }),
+      signal: AbortSignal.timeout(60000),
+    });
+
+    if (!response.ok) {
+      throw new AppError(`RAG query failed: ${response.statusText}`, response.status);
+    }
+
+    return response.json() as Promise<QueryResult>;
+  }
+
+  async queryGraphRag(query: string, topK: number = 5): Promise<GraphRAGResult> {
+    const response = await fetch(`${this.baseUrl}/query/graphrag`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, top_k: topK }),
+      signal: AbortSignal.timeout(60000),
+    });
+
+    if (!response.ok) {
+      throw new AppError(`GraphRAG query failed: ${response.statusText}`, response.status);
+    }
+
+    return response.json() as Promise<GraphRAGResult>;
+  }
+
+  async queryHybridGraph(
+    query: string,
+    topK: number = 5,
+    fusion: "rrf" | "weighted" = "rrf",
+    alpha?: number
+  ): Promise<HybridGraphResult> {
+    const body: Record<string, unknown> = { query, top_k: topK, fusion };
+    if (alpha !== undefined) body.alpha = alpha;
+
+    const response = await fetch(`${this.baseUrl}/query/hybrid-graph`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(60000),
+    });
+
+    if (!response.ok) {
+      throw new AppError(
+        `Hybrid graph query failed: ${response.statusText}`,
+        response.status
+      );
+    }
+
+    return response.json() as Promise<HybridGraphResult>;
+  }
+
+  async queryHybrid(
+    query: string,
+    topK: number = 5,
+    fusionMode: "reciprocal_rerank" | "relative_score" | "dist_based_score" = "reciprocal_rerank"
+  ): Promise<QueryResult> {
+    const response = await fetch(`${this.baseUrl}/query/hybrid`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, top_k: topK, fusion_mode: fusionMode }),
+      signal: AbortSignal.timeout(60000),
+    });
+
+    if (!response.ok) {
+      throw new AppError(
+        `Hybrid query failed: ${response.statusText}`,
+        response.status
+      );
+    }
+
+    return response.json() as Promise<QueryResult>;
+  }
+
+  async queryMultiStep(
+    query: string,
+    topK: number = 5,
+    enableDecomposition: boolean = true,
+    useHybrid: boolean = true
+  ): Promise<MultiStepResult> {
+    const response = await fetch(`${this.baseUrl}/query/multi-step`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query,
+        top_k: topK,
+        enable_decomposition: enableDecomposition,
+        use_hybrid: useHybrid,
+      }),
+      signal: AbortSignal.timeout(120000),
+    });
+
+    if (!response.ok) {
+      throw new AppError(
+        `Multi-step query failed: ${response.statusText}`,
+        response.status
+      );
+    }
+
+    return response.json() as Promise<MultiStepResult>;
+  }
+
+  private async unwrapSimilarResponse(response: Response): Promise<SimilarityResult[]> {
+    const body = await response.json() as { matches?: SimilarityResult[] };
+    return body.matches ?? [];
+  }
+
   async findSimilar(
     submissionId: number,
     topK: number = 10
@@ -68,7 +198,22 @@ class RagService {
       throw new AppError(`Similarity search failed`, response.status);
     }
 
-    return response.json() as Promise<SimilarityResult[]>;
+    return this.unwrapSimilarResponse(response);
+  }
+
+  async findSimilarByText(text: string, topK: number = 10): Promise<SimilarityResult[]> {
+    const response = await fetch(`${this.baseUrl}/similar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, top_k: topK }),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!response.ok) {
+      throw new AppError(`Similarity search failed`, response.status);
+    }
+
+    return this.unwrapSimilarResponse(response);
   }
 
   async healthCheck(): Promise<boolean> {

@@ -33,12 +33,11 @@ spec:
             - name: LLM_PROVIDER
               value: "ollama"
             - name: OLLAMA_BASE_URL
-              value: "http://ollama-service:11434"
+              value: "http://ollama:11434"
             - name: NEO4J_URI
-              valueFrom:
-                secretKeyRef:
-                  name: backend-secrets
-                  key: NEO4J_URI
+              value: "bolt://neo4j:7687"
+            - name: NEO4J_USER
+              value: "neo4j"
             - name: NEO4J_PASSWORD
               valueFrom:
                 secretKeyRef:

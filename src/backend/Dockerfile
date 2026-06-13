@@ -30,7 +30,7 @@ USER appuser
 
 EXPOSE 8080
 
-ENV PYTHONUNBUFFERED=1
+ENV NODE_OPTIONS=--enable-source-maps
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD wget -qO- http://localhost:8080/health || exit 1

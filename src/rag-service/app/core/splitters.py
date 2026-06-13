@@ -19,7 +19,6 @@ class DocumentSplitterStrategy:
             SentenceSplitter,
             MarkdownNodeParser,
             CodeSplitter,
-            NodeParser,
         )
         
         ext = file_ext.lower().strip()
@@ -56,41 +55,7 @@ class DocumentSplitterStrategy:
             chunk_size=settings.chunk_size,
             chunk_overlap=settings.chunk_overlap,
         )
-        
-        ext = file_ext.lower().strip()
 
-        if ext in [".md", ".markdown"]:
-            logger.info("Using MarkdownNodeParser for %s", ext)
-            return MarkdownNodeParser()
-
-        elif ext in [".js", ".ts", ".py", ".html", ".css", ".java", ".cpp", ".c", ".cs"]:
-            logger.info("Using CodeSplitter for %s", ext)
-            language = ext.lstrip(".") # Remove dot
-            # Basic mapping as code splitter requires language string
-            lang_map = {
-                "js": "javascript",
-                "ts": "typescript",
-                "py": "python",
-                "html": "html",
-                "css": "css",
-            }
-            mapped_lang = lang_map.get(language, language)
-            try:
-                return CodeSplitter(
-                    language=mapped_lang,
-                    chunk_lines=50,
-                    chunk_lines_overlap=10,
-                    max_chars=settings.chunk_size,
-                )
-            except Exception as e:
-                logger.warning("CodeSplitter failed to init for %s, falling back to SentenceSplitter: %s", ext, e)
-
-        # Default Splitter Strategy: SentenceSplitter
-        logger.info("Using SentenceSplitter as default for %s", ext)
-        return SentenceSplitter(
-            chunk_size=settings.chunk_size,
-            chunk_overlap=settings.chunk_overlap,
-        )
 
 def smarter_chunk_llama_documents(documents: list[Document], submission_id: int) -> list[dict]:
     """Smartly split documents based on their underlying file types."""

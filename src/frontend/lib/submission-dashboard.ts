@@ -7,6 +7,7 @@ import type {
   SubmissionStatus,
 } from "@/types/submission";
 
+/** MOCK DATA: Replace with real API calls in production */
 const submissionSeed: SubmissionRecord[] = [
   {
     id: "SUB-1101",

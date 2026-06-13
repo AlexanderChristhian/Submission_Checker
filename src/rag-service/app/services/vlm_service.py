@@ -324,6 +324,7 @@ class VLMService:
         "gpt-4o": GPT4VService,
         "claude-3-5-sonnet": ClaudeVisionService,
         "gemini-3-flash": GeminiVisionService,
+    "gemini-3-flash-preview": GeminiVisionService,
     }
 
     MAX_RETRIES = 2

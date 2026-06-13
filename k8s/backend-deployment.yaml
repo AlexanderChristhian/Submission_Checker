@@ -56,8 +56,13 @@ spec:
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
+            runAsUser: 1000
+            runAsGroup: 1000
             capabilities:
               drop: ["ALL"]
+          volumeMounts:
+            - name: tmp-data
+              mountPath: /tmp
           resources:
             requests:
               memory: "128Mi"
@@ -88,3 +93,6 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 3
+      volumes:
+        - name: tmp-data
+          emptyDir: {}
