@@ -1,3 +1,4 @@
+import { prisma } from "../config/database.js";
 import { submissionRepo } from "../repositories/submission.repo.js";
 import { submissionGraph } from "../graph/submission.graph.js";
 import { userGraph } from "../graph/user.graph.js";
@@ -6,7 +7,7 @@ import { NotFoundError } from "../utils/errors.js";
 import type { CreateSubmissionInput } from "../types/submission.types.js";
 import { logger } from "../utils/logger.js";
 
-async function syncToNeo4j(submissionId: number, title: string, userId?: number, assignmentId?: number): Promise<void> {
+async function syncToNeo4j(submissionId: number, title: string, userId?: string, assignmentId?: number): Promise<void> {
   try {
     await submissionGraph.createNode(submissionId, title);
 
@@ -39,6 +40,18 @@ export const submissionService = {
   },
 
   async create(data: CreateSubmissionInput) {
+    // 0. Ensure the user exists (auto-create if missing)
+    await prisma.user.upsert({
+      where: { id: data.userId },
+      update: {},
+      create: {
+        id: data.userId,
+        email: `user${data.userId}@teep.edu`,
+        name: `Student ${data.userId}`,
+        role: "STUDENT",
+      },
+    });
+
     // 1. Save to SQL
     const submission = await submissionRepo.create(data);
 

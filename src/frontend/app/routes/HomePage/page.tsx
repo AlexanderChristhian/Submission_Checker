@@ -1,60 +1,34 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import PageShell from "@/components/Layout/PageShell";
 import PageHeader from "@/components/UI/PageHeader";
 import StatCard from "@/components/UI/StatCard";
 import SubmissionsTable from "@/components/UI/SubmissionsTable";
 import UploadFile from "@/components/UI/UploadFile";
-import type { SubmissionPreview } from "@/types/submission";
-
-const stats = [
-  { label: "Total Submissions", value: 67 },
-  { label: "Pending Review", value: 12 },
-  { label: "Checked", value: 55 },
-];
-
-const recentSubmissions: SubmissionPreview[] = [
-  {
-    id: "SUB-1042",
-    title: "Lab Report - Physics 201",
-    submittedAt: "2026-03-08T10:00:00.000Z",
-    status: "Checked",
-    fileUrl: "https://example.com/files/sub-1042.pdf",
-    grade: 95,
-  },
-  {
-    id: "SUB-1041",
-    title: "Essay - Modern Literature",
-    submittedAt: "2026-03-07T10:00:00.000Z",
-    status: "Pending",
-    fileUrl: "https://example.com/files/sub-1041.pdf",
-    grade: null,
-  },
-  {
-    id: "SUB-1040",
-    title: "Problem Set 5 - Calculus II",
-    submittedAt: "2026-03-06T10:00:00.000Z",
-    status: "Checked",
-    fileUrl: "https://example.com/files/sub-1040.pdf",
-    grade: 88,
-  },
-  {
-    id: "SUB-1039",
-    title: "Research Proposal - Biology",
-    submittedAt: "2026-03-05T10:00:00.000Z",
-    status: "Pending",
-    fileUrl: "https://example.com/files/sub-1039.pdf",
-    grade: null,
-  },
-  {
-    id: "SUB-1038",
-    title: "Case Study - Business Ethics",
-    submittedAt: "2026-03-04T10:00:00.000Z",
-    status: "Checked",
-    fileUrl: "https://example.com/files/sub-1038.pdf",
-    grade: 92,
-  },
-];
+import type { SubmissionDashboardResponse, SubmissionPreview } from "@/types/submission";
 
 export default function HomePage() {
+  const [data, setData] = useState<SubmissionDashboardResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshToken, setRefreshToken] = useState(0);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch("/api/submissions", {
+      cache: "no-store",
+    })
+      .then((r) => r.json())
+      .then((json: SubmissionDashboardResponse) => {
+        setData(json);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [refreshToken]);
+
+  const summary = data?.ok ? data.data.summary : null;
+  const submissions: SubmissionPreview[] = data?.ok ? data.data.submissions : [];
+
   return (
     <PageShell>
       <PageHeader
@@ -62,14 +36,32 @@ export default function HomePage() {
         description="Welcome back. Here's an overview of your submissions."
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {stats.map(({ label, value }) => (
-          <StatCard key={label} label={label} value={value} />
-        ))}
-      </div>
+      {loading ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <div
+              key={i}
+              className="h-24 animate-pulse rounded-xl bg-zinc-200 dark:bg-zinc-800"
+            />
+          ))}
+        </div>
+      ) : summary ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+          <StatCard label="Total" value={summary.total} />
+          <StatCard label="Pending" value={summary.pending} />
+          <StatCard label="Checked" value={summary.checked} />
+          <StatCard label="Avg Grade" value={summary.averageGrade} />
+        </div>
+      ) : null}
 
-      <SubmissionsTable title="Recent Submissions" submissions={recentSubmissions} />
-        <UploadFile />
+      <div className="mt-6 grid gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <SubmissionsTable title="Recent Submissions" submissions={submissions.slice(0, 10)} onGrade={() => setRefreshToken((t) => t + 1)} />
+        </div>
+        <div>
+          <UploadFile />
+        </div>
+      </div>
     </PageShell>
   );
 }

@@ -20,10 +20,10 @@ export async function findShortestPath(
     { idA: submissionIdA, idB: submissionIdB }
   );
   if (result.records.length === 0) return null;
-  const r = result.records[0];
+  const r = result.records[0]!;
   return {
     path: r.get("path") as string[],
-    distance: (r.get("distance") as number).toNumber(),
+    distance: r.get("distance") as number,
   };
 }
 
@@ -55,8 +55,8 @@ export async function findAllStudentPaths(
   );
   return result.records.map((r) => ({
     path: r.get("path") as string[],
-    length: (r.get("length") as number).toNumber(),
-    avgScore: (r.get("avgScore") as number).toNumber?.(2) ?? (r.get("avgScore") as number),
+    length: (r.get("length") as number),
+    avgScore: Math.round((r.get("avgScore") as number) * 100) / 100,
   }));
 }
 
@@ -81,8 +81,8 @@ export async function getSimilarityChain(
   );
   return result.records.map((r) => ({
     chain: r.get("chain") as string[],
-    depth: (r.get("depth") as number).toNumber(),
-    pathScore: (r.get("pathScore") as number).toNumber?.(4) ?? (r.get("pathScore") as number),
+    depth: (r.get("depth") as number),
+    pathScore: Math.round((r.get("pathScore") as number) * 10000) / 10000,
   }));
 }
 
@@ -108,8 +108,8 @@ export async function getSubmissionCentrality(): Promise<CentralityResult[]> {
   return result.records.map((r) => ({
     submissionId: r.get("submissionId") as number,
     title: r.get("title") as string,
-    connectionCount: (r.get("connectionCount") as number).toNumber(),
-    avgSimilarity: (r.get("avgSimilarity") as number).toNumber?.(2) ?? 0,
+    connectionCount: (r.get("connectionCount") as number),
+    avgSimilarity: Math.round((r.get("avgSimilarity") as number) * 100) / 100,
   }));
 }
 
@@ -138,9 +138,9 @@ export async function detectConnectedComponents(): Promise<ConnectedComponent[]>
      ORDER BY size DESC`
   );
   return result.records.map((r) => ({
-    componentId: (r.get("componentId") as number).toNumber(),
+    componentId: (r.get("componentId") as number),
     submissions: r.get("submissions") as string[],
-    size: (r.get("size") as number).toNumber(),
+    size: (r.get("size") as number),
   }));
 }
 
@@ -162,12 +162,15 @@ export async function getPathStats(): Promise<PathStats> {
             max(edgeCount) AS maxLength,
             avg(edgeCount) AS avgLength`
   );
-  const r = result.records[0];
+  const r0 = result.records[0];
+  if (!r0) {
+    return { totalPaths: 0, minLength: 0, maxLength: 0, avgLength: 0 };
+  }
   return {
-    totalPaths: (r.get("totalPaths") as number).toNumber(),
-    minLength: (r.get("minLength") as number).toNumber(),
-    maxLength: (r.get("maxLength") as number).toNumber(),
-    avgLength: (r.get("avgLength") as number).toNumber?.(2) ?? 0,
+    totalPaths: r0.get("totalPaths") as number,
+    minLength: r0.get("minLength") as number,
+    maxLength: r0.get("maxLength") as number,
+    avgLength: Math.round((r0.get("avgLength") as number) * 100) / 100,
   };
 }
 
@@ -192,7 +195,7 @@ export async function getStudentHubScores(): Promise<StudentHubScore[]> {
   return result.records.map((r) => ({
     studentId: r.get("studentId") as number,
     name: r.get("name") as string,
-    submissionCount: (r.get("submissionCount") as number).toNumber(),
-    similarityConnections: (r.get("similarityConnections") as number).toNumber(),
+    submissionCount: (r.get("submissionCount") as number),
+    similarityConnections: (r.get("similarityConnections") as number),
   }));
 }

@@ -2,7 +2,7 @@ import { prisma } from "../config/database.js";
 export const submissionRepo = {
     async findAll() {
         return prisma.submission.findMany({
-            include: { user: true },
+            include: { user: true, grades: true },
             orderBy: { id: "desc" },
         });
     },

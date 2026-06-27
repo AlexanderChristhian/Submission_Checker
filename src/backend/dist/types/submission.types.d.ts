@@ -1,7 +1,7 @@
 export interface CreateSubmissionInput {
     title: string;
     content: string;
-    userId: number;
+    userId: string;
     assignmentId?: number;
     fileName?: string;
     fileUrl?: string;
@@ -11,7 +11,7 @@ export interface SubmissionResponse {
     title: string;
     content: string;
     status: string;
-    userId: number;
+    userId: string;
     assignmentId: number | null;
     createdAt: Date;
     updatedAt: Date;

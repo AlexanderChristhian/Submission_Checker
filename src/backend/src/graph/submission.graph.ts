@@ -28,13 +28,16 @@ export const submissionGraph = {
       { submissionId }
     );
     if (result.records.length === 0) return null;
-    const r = result.records[0];
+    const r = result.records[0]!;
+    const status = r.get("s.status") as string | null;
+    const createdAt = r.get("s.createdAt") as string | null;
+    const updatedAt = r.get("s.updatedAt") as string | null;
     return {
       submissionId: r.get("s.submissionId") as number,
       title: r.get("s.title") as string,
-      status: r.get("s.status") as string | undefined,
-      createdAt: r.get("s.createdAt") as string | undefined,
-      updatedAt: r.get("s.updatedAt") as string | undefined,
+      ...(status !== null && { status }),
+      ...(createdAt !== null && { createdAt }),
+      ...(updatedAt !== null && { updatedAt }),
     };
   },
 
@@ -44,13 +47,18 @@ export const submissionGraph = {
        RETURN s.submissionId, s.title, s.status, s.createdAt, s.updatedAt
        ORDER BY s.createdAt DESC`
     );
-    return result.records.map((r) => ({
-      submissionId: r.get("s.submissionId") as number,
-      title: r.get("s.title") as string,
-      status: r.get("s.status") as string | undefined,
-      createdAt: r.get("s.createdAt") as string | undefined,
-      updatedAt: r.get("s.updatedAt") as string | undefined,
-    }));
+    return result.records.map((r) => {
+      const status = r.get("s.status") as string | null;
+      const createdAt = r.get("s.createdAt") as string | null;
+      const updatedAt = r.get("s.updatedAt") as string | null;
+      return {
+        submissionId: r.get("s.submissionId") as number,
+        title: r.get("s.title") as string,
+        ...(status !== null && { status }),
+        ...(createdAt !== null && { createdAt }),
+        ...(updatedAt !== null && { updatedAt }),
+      };
+    });
   },
 
   async findByStatus(status: string): Promise<SubmissionNode[]> {
@@ -61,12 +69,16 @@ export const submissionGraph = {
        ORDER BY s.createdAt DESC`,
       { status }
     );
-    return result.records.map((r) => ({
-      submissionId: r.get("s.submissionId") as number,
-      title: r.get("s.title") as string,
-      status: r.get("s.status") as string | undefined,
-      createdAt: r.get("s.createdAt") as string | undefined,
-    }));
+    return result.records.map((r) => {
+      const sStatus = r.get("s.status") as string | null;
+      const createdAt = r.get("s.createdAt") as string | null;
+      return {
+        submissionId: r.get("s.submissionId") as number,
+        title: r.get("s.title") as string,
+        ...(sStatus !== null && { status: sStatus }),
+        ...(createdAt !== null && { createdAt }),
+      };
+    });
   },
 
   // ── Update ────────────────────────────────────────────────

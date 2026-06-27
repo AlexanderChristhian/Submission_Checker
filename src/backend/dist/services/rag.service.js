@@ -28,6 +28,78 @@ class RagService {
         }
         return response.json();
     }
+    async queryRag(query, topK = 5) {
+        const response = await fetch(`${this.baseUrl}/query/rag`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query, top_k: topK }),
+            signal: AbortSignal.timeout(60000),
+        });
+        if (!response.ok) {
+            throw new AppError(`RAG query failed: ${response.statusText}`, response.status);
+        }
+        return response.json();
+    }
+    async queryGraphRag(query, topK = 5) {
+        const response = await fetch(`${this.baseUrl}/query/graphrag`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query, top_k: topK }),
+            signal: AbortSignal.timeout(60000),
+        });
+        if (!response.ok) {
+            throw new AppError(`GraphRAG query failed: ${response.statusText}`, response.status);
+        }
+        return response.json();
+    }
+    async queryHybridGraph(query, topK = 5, fusion = "rrf", alpha) {
+        const body = { query, top_k: topK, fusion };
+        if (alpha !== undefined)
+            body.alpha = alpha;
+        const response = await fetch(`${this.baseUrl}/query/hybrid-graph`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(60000),
+        });
+        if (!response.ok) {
+            throw new AppError(`Hybrid graph query failed: ${response.statusText}`, response.status);
+        }
+        return response.json();
+    }
+    async queryHybrid(query, topK = 5, fusionMode = "reciprocal_rerank") {
+        const response = await fetch(`${this.baseUrl}/query/hybrid`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query, top_k: topK, fusion_mode: fusionMode }),
+            signal: AbortSignal.timeout(60000),
+        });
+        if (!response.ok) {
+            throw new AppError(`Hybrid query failed: ${response.statusText}`, response.status);
+        }
+        return response.json();
+    }
+    async queryMultiStep(query, topK = 5, enableDecomposition = true, useHybrid = true) {
+        const response = await fetch(`${this.baseUrl}/query/multi-step`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                query,
+                top_k: topK,
+                enable_decomposition: enableDecomposition,
+                use_hybrid: useHybrid,
+            }),
+            signal: AbortSignal.timeout(120000),
+        });
+        if (!response.ok) {
+            throw new AppError(`Multi-step query failed: ${response.statusText}`, response.status);
+        }
+        return response.json();
+    }
+    async unwrapSimilarResponse(response) {
+        const body = await response.json();
+        return body.matches ?? [];
+    }
     async findSimilar(submissionId, topK = 10) {
         const response = await fetch(`${this.baseUrl}/similar`, {
             method: "POST",
@@ -38,7 +110,19 @@ class RagService {
         if (!response.ok) {
             throw new AppError(`Similarity search failed`, response.status);
         }
-        return response.json();
+        return this.unwrapSimilarResponse(response);
+    }
+    async findSimilarByText(text, topK = 10) {
+        const response = await fetch(`${this.baseUrl}/similar`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text, top_k: topK }),
+            signal: AbortSignal.timeout(30000),
+        });
+        if (!response.ok) {
+            throw new AppError(`Similarity search failed`, response.status);
+        }
+        return this.unwrapSimilarResponse(response);
     }
     async healthCheck() {
         try {

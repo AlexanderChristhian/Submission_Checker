@@ -22,11 +22,11 @@ async function seed() {
 
     // ── 1. Users ────────────────────────────────────────────
     const users = [
-      { userId: 1, name: "Alice", email: "alice@uni.edu", role: "STUDENT" },
-      { userId: 2, name: "Bob", email: "bob@uni.edu", role: "STUDENT" },
-      { userId: 3, name: "Charlie", email: "charlie@uni.edu", role: "STUDENT" },
-      { userId: 4, name: "Diana", email: "diana@uni.edu", role: "STUDENT" },
-      { userId: 5, name: "Dr. Smith", email: "smith@uni.edu", role: "LECTURER" },
+      { userId: "1", name: "Alice", email: "alice@uni.edu", role: "STUDENT" },
+      { userId: "2", name: "Bob", email: "bob@uni.edu", role: "STUDENT" },
+      { userId: "3", name: "Charlie", email: "charlie@uni.edu", role: "STUDENT" },
+      { userId: "4", name: "Diana", email: "diana@uni.edu", role: "STUDENT" },
+      { userId: "5", name: "Dr. Smith", email: "smith@uni.edu", role: "LECTURER" },
     ];
     for (const u of users) {
       await userGraph.createNode(u.userId, u.name, u.email, u.role);
@@ -50,11 +50,11 @@ async function seed() {
     console.log(`  Students: ${students.length}`);
 
     // Map Users → link Students
-    for (let i = 0; i < users.length; i++) {
+    for (let i = 0; i < Math.min(users.length, students.length); i++) {
       await session.run(
         `MATCH (u:User {userId: $userId}), (s:Student {studentId: $studentId})
          MERGE (u)-[:IS_STUDENT]->(s)`,
-        { userId: users[i].userId, studentId: students[i].studentId }
+        { userId: users[i]!.userId, studentId: students[i]!.studentId }
       );
     }
     console.log("  User→Student links created");
@@ -120,10 +120,10 @@ async function seed() {
     console.log("  Enrollments: 5");
 
     // ── 8. Student→Submission links ──────────────────────────
-    const submissionOwners: [number, number, number][] = [
-      [1, 101, 85], [2, 102, 92], [3, 103, 78], [4, 104, 95], [1, 105, 88],
+    const submissionOwners: [string, number, number][] = [
+      ["1", 101, 85], ["2", 102, 92], ["3", 103, 78], ["4", 104, 95], ["1", 105, 88],
     ];
-    for (const [userId, submissionId, score] of submissionOwners) {
+    for (const [userId, submissionId] of submissionOwners) {
       await userGraph.linkToSubmission(userId, submissionId);
     }
     console.log(`  Submission→User links: ${submissionOwners.length}`);

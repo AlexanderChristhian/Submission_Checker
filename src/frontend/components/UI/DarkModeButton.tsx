@@ -1,12 +1,18 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 import { Sun, Moon } from "lucide-react";
 
 export default function ThemeToggle() {
+  const [mounted, setMounted] = useState(false);
   const { setTheme, resolvedTheme } = useTheme();
 
-  if (!resolvedTheme) {
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
     return <div className="h-10 w-10" aria-hidden="true" />;
   }
 

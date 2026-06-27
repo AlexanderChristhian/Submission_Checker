@@ -1,15 +1,14 @@
 import { runQuery } from "./neo4j.client.js";
 
 export interface UserNode {
-  userId: number;
+  userId: string;
   name: string;
   email: string;
   role: string;
 }
 
 export const userGraph = {
-  // ── Create ────────────────────────────────────────────────
-  async createNode(userId: number, name: string, email: string, role: string) {
+  async createNode(userId: string, name: string, email: string, role: string) {
     await runQuery(
       `MERGE (u:User {userId: $userId})
        SET u.name = $name,
@@ -20,17 +19,16 @@ export const userGraph = {
     );
   },
 
-  // ── Read ──────────────────────────────────────────────────
-  async getById(userId: number): Promise<UserNode | null> {
+  async getById(userId: string): Promise<UserNode | null> {
     const result = await runQuery(
       `MATCH (u:User {userId: $userId})
        RETURN u.userId, u.name, u.email, u.role`,
       { userId }
     );
     if (result.records.length === 0) return null;
-    const r = result.records[0];
+    const r = result.records[0]!;
     return {
-      userId: r.get("u.userId") as number,
+      userId: r.get("u.userId") as string,
       name: r.get("u.name") as string,
       email: r.get("u.email") as string,
       role: r.get("u.role") as string,
@@ -44,7 +42,7 @@ export const userGraph = {
        ORDER BY u.name`
     );
     return result.records.map((r) => ({
-      userId: r.get("u.userId") as number,
+      userId: r.get("u.userId") as string,
       name: r.get("u.name") as string,
       email: r.get("u.email") as string,
       role: r.get("u.role") as string,
@@ -60,16 +58,15 @@ export const userGraph = {
       { role }
     );
     return result.records.map((r) => ({
-      userId: r.get("u.userId") as number,
+      userId: r.get("u.userId") as string,
       name: r.get("u.name") as string,
       email: r.get("u.email") as string,
       role: r.get("u.role") as string,
     }));
   },
 
-  // ── Update ────────────────────────────────────────────────
   async updateNode(
-    userId: number,
+    userId: string,
     data: Partial<{ name: string; email: string; role: string }>
   ) {
     const setClauses: string[] = [];
@@ -96,8 +93,7 @@ export const userGraph = {
     );
   },
 
-  // ── Delete ────────────────────────────────────────────────
-  async deleteNode(userId: number) {
+  async deleteNode(userId: string) {
     await runQuery(
       `MATCH (u:User {userId: $userId})
        DETACH DELETE u`,
@@ -105,8 +101,7 @@ export const userGraph = {
     );
   },
 
-  // ── Relationship management ───────────────────────────────
-  async linkToSubmission(userId: number, submissionId: number) {
+  async linkToSubmission(userId: string, submissionId: number) {
     await runQuery(
       `MATCH (u:User {userId: $userId})
        MATCH (s:Submission {submissionId: $submissionId})
@@ -115,7 +110,7 @@ export const userGraph = {
     );
   },
 
-  async getSubmissions(userId: number) {
+  async getSubmissions(userId: string) {
     const result = await runQuery(
       `MATCH (u:User {userId: $userId})-[:SUBMITTED]->(s:Submission)
        RETURN s.submissionId, s.title, s.status, s.createdAt

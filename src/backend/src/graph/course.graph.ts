@@ -17,7 +17,7 @@ export const courseGraph = {
     await runQuery(
       `MERGE (c:Course {code: $code})
        SET c.name = $name, c.credits = $credits, c.updatedAt = datetime()`,
-      course
+      course as unknown as Record<string, unknown>
     );
   },
 
@@ -27,7 +27,7 @@ export const courseGraph = {
       { code }
     );
     if (result.records.length === 0) return null;
-    const record = result.records[0];
+    const record = result.records[0]!;
     return {
       code: record.get("c.code") as string,
       name: record.get("c.name") as string,

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { SubmissionDashboardResponse } from "@/types/submission";
+import type { SubmissionDashboardResponse, SubmissionStatus } from "@/types/submission";
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:3001";
 
@@ -36,11 +36,44 @@ export async function GET(
   }
 
   try {
-    const result = await fetchFromBackend("/api/submissions");
+    const raw = await fetchFromBackend("/api/submissions");
+    if (!raw || raw.ok === false) {
+      return NextResponse.json<SubmissionDashboardResponse>(
+        { ok: false, error: raw?.error || "Backend returned no data" },
+        { status: 502 },
+      );
+    }
 
-    return NextResponse.json<SubmissionDashboardResponse>(result, {
-      status: 200,
+    const items: any[] = raw.data ?? [];
+
+    const summary = {
+      total: items.length,
+      pending: items.filter((s: any) => s.status === "PENDING").length,
+      checked: items.filter((s: any) => s.status === "CHECKED").length,
+      flagged: 0,
+      averageGrade: 0,
+    };
+
+    const submissions = items.map((s: any) => {
+      const latestGrade = s.grades?.length > 0 ? s.grades[s.grades.length - 1] : null;
+      return {
+        id: String(s.id),
+        title: s.title,
+        submittedAt: s.createdAt,
+        status: (s.status === "CHECKED" ? "Checked" : "Pending") as SubmissionStatus,
+        grade: latestGrade?.score ?? null,
+        fileUrl: s.fileUrl ?? "",
+        course: s.assignment?.course?.name ?? "",
+      };
     });
+
+    const result: SubmissionDashboardResponse = {
+      ok: true,
+      data: { summary, submissions },
+      generatedAt: new Date().toISOString(),
+    };
+
+    return NextResponse.json(result, { status: 200 });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unknown server error";
@@ -51,6 +84,26 @@ export async function GET(
         error: `Failed to load submissions dashboard: ${message}`,
       },
       { status: 500 },
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const response = await fetch(`${BACKEND_URL}/api/submissions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10000),
+    });
+    const data = await response.json();
+    return NextResponse.json(data, { status: response.status });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json(
+      { ok: false, error: `Failed to create submission: ${message}` },
+      { status: 502 },
     );
   }
 }

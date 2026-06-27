@@ -110,15 +110,16 @@ export default function SubmissionsDashboardClient() {
     );
   }
 
-  const { summary, submissions } = result.data;
+  const summary = result.data?.summary;
+  const submissions = result.data?.submissions ?? [];
 
   return (
     <>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
-        <StatCard label="Total" value={summary.total} />
-        <StatCard label="Pending" value={summary.pending} />
-        <StatCard label="Checked" value={summary.checked} />
-        <StatCard label="Avg Grade" value={summary.averageGrade} />
+        <StatCard label="Total" value={summary?.total ?? 0} />
+        <StatCard label="Pending" value={summary?.pending ?? 0} />
+        <StatCard label="Checked" value={summary?.checked ?? 0} />
+        <StatCard label="Avg Grade" value={summary?.averageGrade ?? "N/A"} />
       </div>
 
       <p className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">
@@ -126,7 +127,7 @@ export default function SubmissionsDashboardClient() {
       </p>
 
       <div className="mt-4">
-        <SubmissionsTable title="All Submissions" submissions={submissions} />
+        <SubmissionsTable title="All Submissions" submissions={submissions} onGrade={() => setReloadToken((t) => t + 1)} />
       </div>
     </>
   );

@@ -21,12 +21,12 @@ async function seedTestData() {
 
     // ── 1. Users & Students ──────────────────────────────────
     const users = [
-      { userId: 1, name: "Alice", email: "alice@uni.edu", role: "STUDENT" },
-      { userId: 2, name: "Bob", email: "bob@uni.edu", role: "STUDENT" },
-      { userId: 3, name: "Charlie", email: "charlie@uni.edu", role: "STUDENT" },
-      { userId: 4, name: "Diana", email: "diana@uni.edu", role: "STUDENT" },
-      { userId: 5, name: "Eve", email: "eve@uni.edu", role: "STUDENT" },
-      { userId: 6, name: "Dr. Smith", email: "smith@uni.edu", role: "LECTURER" },
+      { userId: "1", name: "Alice", email: "alice@uni.edu", role: "STUDENT" },
+      { userId: "2", name: "Bob", email: "bob@uni.edu", role: "STUDENT" },
+      { userId: "3", name: "Charlie", email: "charlie@uni.edu", role: "STUDENT" },
+      { userId: "4", name: "Diana", email: "diana@uni.edu", role: "STUDENT" },
+      { userId: "5", name: "Eve", email: "eve@uni.edu", role: "STUDENT" },
+      { userId: "6", name: "Dr. Smith", email: "smith@uni.edu", role: "LECTURER" },
     ];
     for (const u of users) {
       await userGraph.createNode(u.userId, u.name, u.email, u.role);
@@ -54,7 +54,7 @@ async function seedTestData() {
       await session.run(
         `MATCH (u:User {userId: $userId}), (s:Student {studentId: $studentId})
          MERGE (u)-[:IS_STUDENT]->(s)`,
-        { userId: users[i].userId, studentId: students[i].studentId }
+        { userId: users[i]!.userId, studentId: students[i]!.studentId }
       );
     }
 
@@ -131,12 +131,12 @@ async function seedTestData() {
     console.log(`  Seeded ${enrollments.length} enrollments`);
 
     // ── 7. Submission → User links ───────────────────────────
-    const submissionOwners: [number, number, number][] = [
-      [1, 101, 85], [2, 102, 92], [3, 103, 78],
-      [1, 104, 95], [4, 105, 88], [3, 106, 80],
-      [5, 107, 91], [5, 108, 87],
+    const submissionOwners: [string, number, number][] = [
+      ["1", 101, 85], ["2", 102, 92], ["3", 103, 78],
+      ["1", 104, 95], ["4", 105, 88], ["3", 106, 80],
+      ["5", 107, 91], ["5", 108, 87],
     ];
-    for (const [userId, submissionId, score] of submissionOwners) {
+    for (const [userId, submissionId] of submissionOwners) {
       await userGraph.linkToSubmission(userId, submissionId);
     }
     console.log(`  Seeded ${submissionOwners.length} submission links`);

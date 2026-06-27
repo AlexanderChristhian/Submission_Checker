@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { authClient } from "@/lib/auth-client";
 import DarkModeButton from "@/components/UI/DarkModeButton";
 
 const navLinks = [
@@ -9,6 +12,8 @@ const navLinks = [
 ];
 
 export default function Navbar() {
+  const { data: session, isPending } = authClient.useSession();
+
   return (
     <nav className="w-full bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 shadow-sm">
       <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
@@ -36,9 +41,26 @@ export default function Navbar() {
         {/* User Actions */}
         <div className="flex items-center gap-3">
           <DarkModeButton />
-          <button className="text-sm px-4 py-1.5 rounded-md bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 hover:opacity-90 transition-opacity">
-            Sign Out
-          </button>
+          {isPending ? null : session ? (
+            <>
+              <span className="text-sm text-zinc-600 dark:text-zinc-400">
+                {session.user.name}
+              </span>
+              <button
+                onClick={() => authClient.signOut()}
+                className="text-sm px-4 py-1.5 rounded-md bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 hover:opacity-90 transition-opacity"
+              >
+                Sign Out
+              </button>
+            </>
+          ) : (
+            <Link
+              href="/login"
+              className="text-sm px-4 py-1.5 rounded-md bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 hover:opacity-90 transition-opacity"
+            >
+              Sign In
+            </Link>
+          )}
         </div>
       </div>
     </nav>

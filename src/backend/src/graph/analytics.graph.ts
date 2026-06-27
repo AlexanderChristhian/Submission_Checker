@@ -14,7 +14,7 @@ export async function getNodeCounts(): Promise<NodeCount[]> {
   );
   return result.records.map((r) => ({
     label: r.get("label") as string,
-    count: (r.get("count") as number).toNumber(),
+    count: r.get("count") as number,
   }));
 }
 
@@ -41,7 +41,7 @@ export async function getSimilarityDistribution(): Promise<ScoreBucket[]> {
   );
   return result.records.map((r) => ({
     bucket: r.get("bucket") as string,
-    count: (r.get("count") as number).toNumber(),
+    count: r.get("count") as number,
   }));
 }
 
@@ -78,8 +78,8 @@ export async function detectPlagiarismClusters(
   );
   return result.records.map((r) => ({
     submissions: r.get("submissions") as Array<{ id: number; title: string }>,
-    avgScore: (r.get("avgScore") as number).toNumber?.(2) ?? (r.get("avgScore") as number),
-    size: (r.get("size") as number).toNumber(),
+    avgScore: Math.round((r.get("avgScore") as number) * 100) / 100,
+    size: r.get("size") as number,
   }));
 }
 
@@ -221,7 +221,7 @@ export async function getCourseSimilarityReport(
   );
 
   const totalSubmissions = metaResult.records[0]
-    ? (metaResult.records[0].get("totalSubmissions") as number).toNumber()
+    ? (metaResult.records[0].get("totalSubmissions") as number)
     : 0;
 
   const pairs = pairsResult.records.map((r) => ({
@@ -296,9 +296,8 @@ export async function getFlaggedStudents(
   return result.records.map((r) => ({
     studentId: r.get("studentId") as number,
     name: r.get("name") as string,
-    flaggedCount: (r.get("flaggedCount") as number).toNumber(),
-    avgSimilarity:
-      Math.round(((r.get("avgSimilarity") as number).toNumber?.() ?? (r.get("avgSimilarity") as number)) * 100) / 100,
+    flaggedCount: r.get("flaggedCount") as number,
+    avgSimilarity: Math.round((r.get("avgSimilarity") as number) * 100) / 100,
   }));
 }
 
@@ -325,12 +324,12 @@ export async function getGraphStats(): Promise<GraphStats> {
 
   const simR = simStats.records[0];
   return {
-    nodeCount: (nodeCount.records[0]?.get("count") as number).toNumber(),
-    relationshipCount: (relCount.records[0]?.get("count") as number).toNumber(),
-    avgSimilarityScore: (simR?.get("avg") as number)?.toNumber?.(4) ?? 0,
+    nodeCount: (nodeCount.records[0]?.get("count") as number) ?? 0,
+    relationshipCount: (relCount.records[0]?.get("count") as number) ?? 0,
+    avgSimilarityScore: Math.round(((simR?.get("avg") as number) ?? 0) * 10000) / 10000,
     maxSimilarityScore: (simR?.get("max") as number) ?? 0,
     minSimilarityScore: (simR?.get("min") as number) ?? 0,
-    standardDeviation: (simR?.get("std") as number)?.toNumber?.(4) ?? 0,
+    standardDeviation: Math.round(((simR?.get("std") as number) ?? 0) * 10000) / 10000,
   };
 }
 
@@ -348,7 +347,7 @@ export async function getRelationshipTypeCounts(): Promise<RelTypeCount[]> {
   );
   return result.records.map((r) => ({
     type: r.get("type") as string,
-    count: (r.get("count") as number).toNumber(),
+    count: r.get("count") as number,
   }));
 }
 
@@ -378,8 +377,8 @@ export async function getSubmissionScorePercentiles(): Promise<ScorePercentile[]
   );
   return result.records.map((r) => ({
     percentile: r.get("percentile") as string,
-    minScore: (r.get("minScore") as number).toNumber?.(2) ?? (r.get("minScore") as number),
-    maxScore: (r.get("maxScore") as number).toNumber?.(2) ?? (r.get("maxScore") as number),
+    minScore: Math.round((r.get("minScore") as number) * 100) / 100,
+    maxScore: Math.round((r.get("maxScore") as number) * 100) / 100,
   }));
 }
 
@@ -404,7 +403,7 @@ export async function getSubmissionPath(
   );
 
   if (result.records.length === 0) return null;
-  const r = result.records[0];
+  const r = result.records[0]!;
   return {
     student: {
       id: r.get("studentId") as number,

@@ -36,12 +36,13 @@ export const assignmentGraph = {
       { assignmentId }
     );
     if (result.records.length === 0) return null;
-    const r = result.records[0];
+    const r = result.records[0]!;
+    const dueDate = r.get("a.dueDate") as string | null;
     return {
       assignmentId: r.get("a.assignmentId") as number,
       title: r.get("a.title") as string,
       courseCode: r.get("courseCode") as string,
-      dueDate: r.get("a.dueDate") as string | undefined,
+      ...(dueDate !== null && { dueDate }),
     };
   },
 
@@ -52,12 +53,15 @@ export const assignmentGraph = {
        ORDER BY a.dueDate ASC`,
       { courseCode }
     );
-    return result.records.map((r) => ({
-      assignmentId: r.get("a.assignmentId") as number,
-      title: r.get("a.title") as string,
-      courseCode: r.get("courseCode") as string,
-      dueDate: r.get("a.dueDate") as string | undefined,
-    }));
+    return result.records.map((r) => {
+      const dueDate = r.get("a.dueDate") as string | null;
+      return {
+        assignmentId: r.get("a.assignmentId") as number,
+        title: r.get("a.title") as string,
+        courseCode: r.get("courseCode") as string,
+        ...(dueDate !== null && { dueDate }),
+      };
+    });
   },
 
   async getAll(): Promise<AssignmentNode[]> {
@@ -66,12 +70,15 @@ export const assignmentGraph = {
        RETURN a.assignmentId, a.title, a.dueDate, c.code AS courseCode
        ORDER BY a.dueDate DESC`
     );
-    return result.records.map((r) => ({
-      assignmentId: r.get("a.assignmentId") as number,
-      title: r.get("a.title") as string,
-      courseCode: r.get("courseCode") as string,
-      dueDate: r.get("a.dueDate") as string | undefined,
-    }));
+    return result.records.map((r) => {
+      const dueDate = r.get("a.dueDate") as string | null;
+      return {
+        assignmentId: r.get("a.assignmentId") as number,
+        title: r.get("a.title") as string,
+        courseCode: r.get("courseCode") as string,
+        ...(dueDate !== null && { dueDate }),
+      };
+    });
   },
 
   // ── Update ────────────────────────────────────────────────

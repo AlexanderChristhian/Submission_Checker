@@ -1,31 +1,24 @@
 import type { Request, Response, NextFunction } from "express";
+import { fromNodeHeaders } from "better-auth/node";
+import { auth } from "../config/auth.js";
 import { AppError } from "../utils/errors.js";
-import { config } from "../config/index.js";
 
-export function authMiddleware(
+export async function authMiddleware(
   req: Request,
   _res: Response,
   next: NextFunction
-): void {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader?.startsWith("Bearer ")) {
-    next(new AppError("Authentication required", 401));
-    return;
-  }
-
-  const token = authHeader.split(" ")[1];
-  if (!token) {
-    next(new AppError("Authentication required", 401));
-    return;
-  }
-
+): Promise<void> {
   try {
-    const jwt = require("jsonwebtoken");
-    const decoded = jwt.verify(token, config.JWT_SECRET);
-    (req as Record<string, unknown>).user = decoded;
+    const session = await auth.api.getSession({
+      headers: fromNodeHeaders(req.headers),
+    });
+    if (!session) {
+      next(new AppError("Authentication required", 401));
+      return;
+    }
+    (req as any).user = session.user;
     next();
   } catch {
-    next(new AppError("Invalid or expired token", 401));
+    next(new AppError("Invalid or expired session", 401));
   }
 }

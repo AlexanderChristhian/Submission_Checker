@@ -2,7 +2,7 @@ import { z } from "zod";
 export declare const createSubmissionSchema: z.ZodObject<{
     title: z.ZodString;
     content: z.ZodString;
-    userId: z.ZodNumber;
+    userId: z.ZodString;
     assignmentId: z.ZodOptional<z.ZodNumber>;
     fileName: z.ZodOptional<z.ZodString>;
     fileUrl: z.ZodOptional<z.ZodString>;
