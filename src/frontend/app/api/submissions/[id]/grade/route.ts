@@ -11,7 +11,7 @@ export async function POST(
     const response = await fetch(`${BACKEND_URL}/api/submissions/${id}/grade`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(240000),
     });
     const data = await response.json();
     return NextResponse.json(data, { status: response.status });

@@ -14,7 +14,7 @@ export interface SubmissionRecord {
 export type SubmissionPreview = Pick<
   SubmissionRecord,
   "id" | "title" | "submittedAt" | "status" | "grade" | "fileUrl"
->;
+> & { feedback?: string | null };
 
 export type SubmissionPatch = Partial<
   Pick<SubmissionRecord, "status" | "grade" | "similarityScore">

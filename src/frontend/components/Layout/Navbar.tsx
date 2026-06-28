@@ -8,6 +8,7 @@ const navLinks = [
   { href: "/routes/HomePage", label: "Dashboard" },
   { href: "/routes/Submissions", label: "Submissions" },
   { href: "/routes/Reports", label: "Reports" },
+  { href: "/routes/Admin", label: "Admin" },
   { href: "/routes/Settings", label: "Settings" },
 ];
 

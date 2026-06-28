@@ -31,18 +31,7 @@ export const submissionService = {
         return submission;
     },
     async create(data) {
-        // 0. Ensure the user exists (auto-create if missing)
-        await prisma.user.upsert({
-            where: { id: data.userId },
-            update: {},
-            create: {
-                id: data.userId,
-                email: `user${data.userId}@teep.edu`,
-                name: `Student ${data.userId}`,
-                role: "STUDENT",
-            },
-        });
-        // 1. Save to SQL
+        // 1. Save to SQL (FK to user must exist — signed in via Better Auth)
         const submission = await submissionRepo.create(data);
         // 2. Sync to Neo4j (node + relationships) in the same request
         await syncToNeo4j(submission.id, submission.title, data.userId, data.assignmentId);

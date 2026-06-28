@@ -46,6 +46,10 @@ declare class RagService {
     private unwrapSimilarResponse;
     findSimilar(submissionId: number, topK?: number): Promise<SimilarityResult[]>;
     findSimilarByText(text: string, topK?: number): Promise<SimilarityResult[]>;
+    evaluateSubmission(submissionId: number, content: string, assignmentTitle?: string, ruleContent?: string): Promise<{
+        score: number;
+        deductions: string[];
+    }>;
     healthCheck(): Promise<boolean>;
 }
 export declare const ragService: RagService;

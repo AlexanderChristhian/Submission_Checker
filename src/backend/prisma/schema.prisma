@@ -80,6 +80,7 @@ model Course {
   createdAt DateTime @default(now())
 
   assignments Assignment[]
+  gradingRules GradingRule[]
 }
 
 model Assignment {
@@ -130,7 +131,7 @@ model Grade {
   id           Int      @id @default(autoincrement())
   score        Float
   feedback     String?  @db.Text
-  submissionId Int
+  submissionId Int @unique
   submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
   gradedById   String?
   gradedBy     user?    @relation(fields: [gradedById], references: [id])
@@ -147,6 +148,19 @@ model PlagiarismReport {
   flagged        Boolean    @default(false)
   details        Json?      // structured match data from Neo4j/RAG
   createdAt      DateTime   @default(now())
+}
+
+// ── Grading Rules ─────────────────────────────────────────
+
+model GradingRule {
+  id        Int      @id @default(autoincrement())
+  name      String
+  content   String   @db.Text
+  courseId   Int?
+  course    Course?  @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // ── Audit Log ─────────────────────────────────────────────

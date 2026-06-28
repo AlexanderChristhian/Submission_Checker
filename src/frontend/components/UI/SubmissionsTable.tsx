@@ -29,6 +29,10 @@ export default function SubmissionsTable({ title, submissions, onGrade }: Submis
   const [gradeResults, setGradeResults] = useState<Record<string, { score: number; feedback: string }>>({});
   const [gradeError, setGradeError] = useState<string | null>(null);
 
+  function hasGrade(sub: SubmissionPreview): boolean {
+    return sub.grade !== null || gradeResults[sub.id] !== undefined;
+  }
+
   async function handleGrade(id: string) {
     setGradingIds((prev) => new Set(prev).add(id));
     setGradeError(null);
@@ -102,15 +106,18 @@ export default function SubmissionsTable({ title, submissions, onGrade }: Submis
                   <GradeBadge grade={displayGrade === null ? "N/A" : String(displayGrade)} />
                 </td>
                 <td className="py-3 max-w-xs truncate text-xs text-zinc-500 dark:text-zinc-400">
-                  {result?.feedback ?? "—"} 
+                  {result?.feedback ?? sub.feedback ?? "—"} 
                 </td>
                 <td className="py-3">
                   <button
-                    onClick={() => handleGrade(sub.id)}
-                    disabled={gradingIds.has(sub.id) || (result !== undefined)}
+                    onClick={() => {
+                      if (hasGrade(sub) && !window.confirm("Regrade this submission?")) return;
+                      handleGrade(sub.id);
+                    }}
+                    disabled={gradingIds.has(sub.id)}
                     className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {gradingIds.has(sub.id) ? "Grading..." : result ? "Graded" : "Grade"}
+                    {gradingIds.has(sub.id) ? "Grading..." : hasGrade(sub) ? "Regrade" : "Grade"}
                   </button>
                 </td>
               </tr>

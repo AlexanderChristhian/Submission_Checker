@@ -8,6 +8,18 @@ from app.core.vlm_constants import (
 
 # ── Request Models ─────────────────────────────────────────
 
+class EvaluateRequest(BaseModel):
+    submission_id: int = Field(..., gt=0)
+    content: str = Field(..., min_length=1, max_length=500000)
+    assignment_title: str = Field(default="", max_length=500)
+    rule_content: str = Field(default="", max_length=50000)
+
+
+class EvaluateResponse(BaseModel):
+    score: float
+    deductions: list[str]
+
+
 class IndexTextRequest(BaseModel):
     submission_id: int = Field(..., gt=0, description="Unique submission identifier")
     content: str = Field(..., min_length=1, max_length=500000, description="Text content to index")

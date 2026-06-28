@@ -1,3 +1,4 @@
+import re
 import tempfile
 import os
 import json
@@ -6,6 +7,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, File, UploadFile, Form
 from pydantic import ValidationError
 from app.api.schemas import (
+    EvaluateRequest,
+    EvaluateResponse,
     IndexTextRequest,
     IndexResponse,
     QueryRequest,
@@ -41,7 +44,7 @@ from app.services.vlm_service import VLMService
 from app.core.vlm_constants import DEFAULT_VLM_PROVIDER
 from app.core.retrievers import get_hybrid_retriever
 from app.core.querying import retrieve_chunks
-from app.core.prompts import RAG_QUERY_TEMPLATE
+from app.core.prompts import EVALUATION_PROMPT, RAG_QUERY_TEMPLATE
 from app.core.llm import llm_service
 from app.core.neo4j_client import neo4j_client
 from app.utils.logger import get_logger
@@ -536,6 +539,47 @@ async def health_check():
     except Exception:
         pass
     return HealthResponse(status="ok" if neo4j_ok else "degraded")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# EVALUATION ROUTE
+# ═══════════════════════════════════════════════════════════════════
+
+@router.post("/evaluate", response_model=EvaluateResponse)
+async def evaluate_submission(request: EvaluateRequest):
+    """Grade a submission using LLM — returns score and list of deductions."""
+    try:
+        prompt = EVALUATION_PROMPT.format(
+            assignment_title=request.assignment_title or "General Assignment",
+            content=request.content,
+        )
+        logger.info(
+            "Evaluating submission",
+            extra={"submission_id": request.submission_id, "prompt_chars": len(prompt), "rule_chars": len(request.rule_content)},
+        )
+        data = llm_service.generate_json(prompt, system_prompt=request.rule_content)
+
+        deductions = data.get("deductions", [])
+        raw_score = data.get("score")
+
+        if raw_score is not None:
+            score = float(raw_score)
+        elif deductions:
+            total_deducted = 0.0
+            for d in deductions:
+                try:
+                    pts = re.split(r'[,\s)]+', d)[0].lstrip("-•*–— ").strip()
+                    total_deducted += float(pts)
+                except (ValueError, IndexError):
+                    pass
+            score = max(0.0, 100.0 - total_deducted)
+        else:
+            score = 0.0
+
+        return EvaluateResponse(score=round(score, 2), deductions=deductions)
+    except Exception as e:
+        logger.error("Evaluation failed", extra={"error": str(e)}, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Evaluation failed: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════

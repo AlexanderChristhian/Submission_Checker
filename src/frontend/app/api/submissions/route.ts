@@ -62,6 +62,7 @@ export async function GET(
         submittedAt: s.createdAt,
         status: (s.status === "CHECKED" ? "Checked" : "Pending") as SubmissionStatus,
         grade: latestGrade?.score ?? null,
+        feedback: latestGrade?.feedback ?? null,
         fileUrl: s.fileUrl ?? "",
         course: s.assignment?.course?.name ?? "",
       };

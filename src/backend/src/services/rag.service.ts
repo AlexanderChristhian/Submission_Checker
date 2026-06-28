@@ -216,6 +216,34 @@ class RagService {
     return this.unwrapSimilarResponse(response);
   }
 
+  async evaluateSubmission(
+    submissionId: number,
+    content: string,
+    assignmentTitle?: string,
+    ruleContent?: string,
+  ): Promise<{ score: number; deductions: string[] }> {
+    const response = await fetch(`${this.baseUrl}/evaluate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        submission_id: submissionId,
+        content,
+        assignment_title: assignmentTitle ?? "",
+        rule_content: ruleContent ?? "",
+      }),
+      signal: AbortSignal.timeout(240000),
+    });
+
+    if (!response.ok) {
+      throw new AppError(
+        `Evaluation failed: ${response.statusText}`,
+        response.status,
+      );
+    }
+
+    return response.json() as Promise<{ score: number; deductions: string[] }>;
+  }
+
   async healthCheck(): Promise<boolean> {
     try {
       const response = await fetch(`${this.baseUrl}/health`, {

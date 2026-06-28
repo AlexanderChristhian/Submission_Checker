@@ -11,8 +11,9 @@ class JSONFormatter(logging.Formatter):
             "message": record.getMessage(),
             "module": record.module,
         }
-        if hasattr(record, "submission_id"):
-            log["submission_id"] = record.submission_id  # type: ignore[attr-defined]
+        for key in ("submission_id", "error", "model", "prompt_tokens", "eval_tokens", "prompt_duration_ms", "eval_duration_ms", "total_duration_ms", "prompt_chars", "rule_chars"):
+            if hasattr(record, key):
+                log[key] = getattr(record, key)  # type: ignore[attr-defined]
         if record.exc_info:
             log["exception"] = self.formatException(record.exc_info)
         return json.dumps(log)
